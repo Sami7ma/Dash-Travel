@@ -13,7 +13,7 @@ function parseSeat(seatNumber: string) {
     return { row: parseInt(match[1]), col: match[2] }
 }
 
-export default function BookingFlow() {
+function BookingFlow() {
     const searchParams = useSearchParams()
     const router = useRouter()
 
@@ -528,3 +528,18 @@ export default function BookingFlow() {
         </div>
     )
 }
+
+import { Suspense } from 'react'
+
+export default function BookingPage() {
+    return (
+        <Suspense fallback={
+            <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#0a0e1a', color: '#64748b' }}>
+                Loading booking details...
+            </div>
+        }>
+            <BookingFlow />
+        </Suspense>
+    )
+}
+

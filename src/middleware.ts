@@ -1,12 +1,11 @@
 import { NextResponse, NextRequest } from 'next/server'
+import { jwtVerify } from 'jose'
 
-// ─── In-memory rate limiter ──────────────────────────────
-// For production, replace with Redis-backed limiter (e.g. @upstash/ratelimit)
+// ─── In-memory rate limiter ──────────────────────────────────
 const rateMap = new Map<string, { count: number; reset: number }>()
-const WINDOW_MS = 60_000   // 1 minute
-const MAX_REQUESTS = 30    // per window per IP+path
+const WINDOW_MS = 60_000
+const MAX_REQUESTS = 30
 
-// Cleanup stale entries every 5 minutes to prevent memory leak
 setInterval(() => {
     const now = Date.now()
     for (const [key, val] of rateMap.entries()) {
@@ -14,40 +13,60 @@ setInterval(() => {
     }
 }, 300_000)
 
-export function middleware(req: NextRequest) {
-    // Only rate-limit API routes
-    if (!req.nextUrl.pathname.startsWith('/api/')) {
-        return NextResponse.next()
-    }
+// ─── Admin panel path (obscured) ─────────────────────────────
+const ADMIN_PATH = '/bmc-ops'
+const ADMIN_LOGIN_PATH = `${ADMIN_PATH}/login`
+const JWT_SECRET = new TextEncoder().encode(
+    process.env.SUPABASE_SERVICE_ROLE_KEY?.slice(0, 32) || 'bemengede-admin-secret-key-2026!'
+)
+const COOKIE_NAME = 'bmc-staff-token'
 
-    const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim()
-        || req.headers.get('x-real-ip')
-        || 'unknown'
-    const key = `${ip}:${req.nextUrl.pathname}`
-    const now = Date.now()
-    const entry = rateMap.get(key)
+export async function middleware(req: NextRequest) {
+    const path = req.nextUrl.pathname
 
-    if (!entry || now > entry.reset) {
-        rateMap.set(key, { count: 1, reset: now + WINDOW_MS })
-        return NextResponse.next()
-    }
+    // ── Rate limit API routes ────────────────────────────────
+    if (path.startsWith('/api/')) {
+        const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim()
+            || req.headers.get('x-real-ip')
+            || 'unknown'
+        const key = `${ip}:${path}`
+        const now = Date.now()
+        const entry = rateMap.get(key)
 
-    entry.count++
-    if (entry.count > MAX_REQUESTS) {
-        return NextResponse.json(
-            { error: 'Too many requests. Please wait a moment and try again.' },
-            {
-                status: 429,
-                headers: {
-                    'Retry-After': String(Math.ceil((entry.reset - now) / 1000)),
-                }
+        if (!entry || now > entry.reset) {
+            rateMap.set(key, { count: 1, reset: now + WINDOW_MS })
+        } else {
+            entry.count++
+            if (entry.count > MAX_REQUESTS) {
+                return NextResponse.json(
+                    { error: 'Too many requests. Please wait a moment and try again.' },
+                    { status: 429, headers: { 'Retry-After': String(Math.ceil((entry.reset - now) / 1000)) } }
+                )
             }
-        )
+        }
+    }
+
+    // ── Protect admin panel pages ────────────────────────────
+    if (path.startsWith(ADMIN_PATH) && path !== ADMIN_LOGIN_PATH) {
+        const token = req.cookies.get(COOKIE_NAME)?.value
+
+        if (!token) {
+            return NextResponse.redirect(new URL(ADMIN_LOGIN_PATH, req.url))
+        }
+
+        try {
+            await jwtVerify(token, JWT_SECRET)
+        } catch {
+            // Invalid or expired token
+            const response = NextResponse.redirect(new URL(ADMIN_LOGIN_PATH, req.url))
+            response.cookies.delete(COOKIE_NAME)
+            return response
+        }
     }
 
     return NextResponse.next()
 }
 
 export const config = {
-    matcher: '/api/:path*',
+    matcher: ['/api/:path*', '/bmc-ops/:path*'],
 }

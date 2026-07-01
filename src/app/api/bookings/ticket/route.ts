@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabaseAdmin'
+import { releaseExpiredSeatHolds } from '@/lib/seatHolds'
 
 // Secure ticket lookup — replaces direct browser Supabase query
 export async function GET(req: NextRequest) {
@@ -8,6 +9,8 @@ export async function GET(req: NextRequest) {
     if (!ref || typeof ref !== 'string' || ref.length < 5) {
         return NextResponse.json({ error: 'Invalid booking reference' }, { status: 400 })
     }
+
+    await releaseExpiredSeatHolds(ref)
 
     // Find bookings matching this ref (could be single or group)
     const { data: bookings, error } = await supabaseAdmin

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabaseAdmin'
+import { releaseExpiredSeatHolds } from '@/lib/seatHolds'
 
 export async function GET(req: NextRequest) {
     const phone = new URL(req.url).searchParams.get('phone')
@@ -7,6 +8,8 @@ export async function GET(req: NextRequest) {
     if (!phone) {
         return NextResponse.json({ error: 'Phone is required' }, { status: 400 })
     }
+
+    await releaseExpiredSeatHolds()
 
     // Find the passenger by phone
     const { data: passenger } = await supabaseAdmin

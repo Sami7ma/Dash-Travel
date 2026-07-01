@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabaseAdmin'
+import { releaseExpiredSeatHolds, SEAT_HOLD_TIMEOUT_MINUTES } from '@/lib/seatHolds'
 import { randomBytes } from 'crypto'
 
 // Cryptographically strong booking ref — 10 hex chars = ~1 trillion combos
@@ -8,13 +9,13 @@ function generateRef(): string {
 }
 
 export async function POST(req: NextRequest) {
-    const { scheduleId, seatNumbers, name, phone } = await req.json()
+    const { scheduleId, seatNumber, seatNumbers, name, phone } = await req.json()
 
     // ── Input validation ──────────────────────────────────────────────
     // Accept both single seat (legacy) and array of seats
     const seats: string[] = Array.isArray(seatNumbers)
         ? seatNumbers
-        : seatNumbers ? [seatNumbers] : ([] as string[])
+        : seatNumbers ? [seatNumbers] : seatNumber ? [seatNumber] : ([] as string[])
 
     if (!scheduleId || seats.length === 0 || !name?.trim() || !phone?.trim()) {
         return NextResponse.json({ error: 'All fields are required' }, { status: 400 })
@@ -30,6 +31,8 @@ export async function POST(req: NextRequest) {
     if (cleanName.length < 2) {
         return NextResponse.json({ error: 'Name must be at least 2 characters' }, { status: 400 })
     }
+
+    await releaseExpiredSeatHolds()
 
     // ── Validate schedule exists and is in the future ──────────────────
     const { data: schedule, error: schedError } = await supabaseAdmin
@@ -125,9 +128,10 @@ export async function POST(req: NextRequest) {
         group_ref: groupRef,
     }))
 
-    const { error: bookErr } = await supabaseAdmin
+    const { data: createdBookings, error: bookErr } = await supabaseAdmin
         .from('bookings')
         .insert(bookingInserts)
+        .select('id')
 
     if (bookErr) {
         // Rollback seat locks
@@ -138,31 +142,49 @@ export async function POST(req: NextRequest) {
     }
 
     // ── Chapa payment ─────────────────────────────────────────────────
-    const chapaRes = await fetch('https://api.chapa.co/v1/transaction/initialize', {
-        method: 'POST',
-        headers: {
-            Authorization: `Bearer ${process.env.CHAPA_SECRET_KEY}`,
-            'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-            amount: totalPrice,
-            currency: 'ETB',
-            phone_number: phone,
-            first_name: cleanName.split(' ')[0],
-            last_name: cleanName.split(' ')[1] ?? 'N/A',
-            tx_ref: groupRef,
-            callback_url: `${process.env.NEXT_PUBLIC_BASE_URL}/api/webhooks/chapa`,
-            return_url: `${process.env.NEXT_PUBLIC_BASE_URL}/ticket/${groupRef}`,
-            customization: {
-                title: 'Bemengede',
-                description: `${seats.length} seat${seats.length > 1 ? 's' : ''} - ${seats.join(' ')}`.replace(/[^a-zA-Z0-9\s\-_.]/g, '').substring(0, 50),
-            },
-        }),
-    })
+    const rollbackUnpaidHold = async () => {
+        for (const seatId of lockedSeatIds) {
+            await supabaseAdmin.from('seats').update({ is_booked: false }).eq('id', seatId)
+        }
 
-    const chapaData = await chapaRes.json()
+        const createdIds = (createdBookings || []).map(booking => booking.id)
+        if (createdIds.length > 0) {
+            await supabaseAdmin.from('bookings').delete().in('id', createdIds)
+        }
+    }
+
+    let chapaData
+    try {
+        const chapaRes = await fetch('https://api.chapa.co/v1/transaction/initialize', {
+            method: 'POST',
+            headers: {
+                Authorization: `Bearer ${process.env.CHAPA_SECRET_KEY}`,
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                amount: totalPrice,
+                currency: 'ETB',
+                phone_number: phone,
+                first_name: cleanName.split(' ')[0],
+                last_name: cleanName.split(' ')[1] ?? 'N/A',
+                tx_ref: groupRef,
+                callback_url: `${process.env.NEXT_PUBLIC_BASE_URL}/api/webhooks/chapa`,
+                return_url: `${process.env.NEXT_PUBLIC_BASE_URL}/ticket/${groupRef}`,
+                customization: {
+                    title: 'Bemengede',
+                    description: `${seats.length} seat${seats.length > 1 ? 's' : ''} - ${seats.join(' ')}`.replace(/[^a-zA-Z0-9\s\-_.]/g, '').substring(0, 50),
+                },
+            }),
+        })
+
+        chapaData = await chapaRes.json()
+    } catch {
+        await rollbackUnpaidHold()
+        return NextResponse.json({ error: 'Could not start payment. Please try again.' }, { status: 502 })
+    }
 
     if (chapaData.status !== 'success') {
+        await rollbackUnpaidHold()
         return NextResponse.json({ error: 'Chapa: ' + JSON.stringify(chapaData) }, { status: 500 })
     }
 
@@ -171,5 +193,6 @@ export async function POST(req: NextRequest) {
         groupRef,
         seatCount: seats.length,
         totalPrice,
+        expiresAt: new Date(Date.now() + SEAT_HOLD_TIMEOUT_MINUTES * 60 * 1000).toISOString(),
     })
 }

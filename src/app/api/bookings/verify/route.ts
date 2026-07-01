@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabaseAdmin'
+import { releaseExpiredSeatHolds } from '@/lib/seatHolds'
 
 // Manual payment verification — used when Chapa can't reach localhost webhook
 export async function GET(req: NextRequest) {
@@ -9,6 +10,8 @@ export async function GET(req: NextRequest) {
     if (!bookingRef) {
         return NextResponse.json({ error: 'Missing booking ref' }, { status: 400 })
     }
+
+    await releaseExpiredSeatHolds(bookingRef)
 
     // 1. Find all bookings (single or group)
     const { data: bookings } = await supabaseAdmin

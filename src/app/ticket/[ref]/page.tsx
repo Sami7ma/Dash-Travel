@@ -46,6 +46,7 @@ export default function TicketPage() {
 
         const bookedAt = new Date(primary.booked_at).getTime()
         const deadline = bookedAt + 15 * 60 * 1000 // 15 minutes
+        let releaseRequested = false
 
         const tick = () => {
             const now = Date.now()
@@ -54,8 +55,10 @@ export default function TicketPage() {
             if (remaining <= 0) {
                 setCountdown('00:00')
                 setTimerExpired(true)
-                // Auto-release seats
-                fetch('/api/cron/release-seats').then(() => {
+                if (releaseRequested) return
+                releaseRequested = true
+                // Auto-release only this expired booking group
+                fetch(`/api/cron/release-seats?ref=${ref}`).then(() => {
                     setTimeout(() => loadBooking(), 1500)
                 })
                 return
@@ -208,6 +211,28 @@ export default function TicketPage() {
                     <div className={`badge ${badgeClass}`} style={{ marginBottom: '1rem' }}>
                         {statusText}
                     </div>
+
+                    {!isPaid && !isCancelled && !isExpired && (
+                        <div style={{
+                            margin: '0 auto 1rem',
+                            padding: '0.8rem 1rem',
+                            borderRadius: 'var(--radius-sm)',
+                            background: 'rgba(245,158,11,0.08)',
+                            border: '1px solid rgba(245,158,11,0.25)',
+                        }}>
+                            <p style={{ color: 'var(--text-muted)', fontSize: '0.75rem', marginBottom: 4 }}>
+                                Payment hold expires in
+                            </p>
+                            <p style={{ color: 'var(--gold)', fontFamily: 'Outfit', fontWeight: 800, fontSize: '1.45rem', lineHeight: 1 }}>
+                                {countdown || '15:00'}
+                            </p>
+                            {timerExpired && (
+                                <p style={{ color: 'var(--danger)', fontSize: '0.78rem', marginTop: 6 }}>
+                                    Time is up. Releasing unpaid seat hold...
+                                </p>
+                            )}
+                        </div>
+                    )}
 
                     <h2 style={{
                         fontSize: '1.6rem',

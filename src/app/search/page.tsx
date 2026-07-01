@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 
-export default function SearchResults() {
+function SearchResults() {
     const searchParams = useSearchParams()
     const router = useRouter()
 
@@ -71,3 +71,18 @@ export default function SearchResults() {
         </main>
     )
 }
+
+import { Suspense } from 'react'
+
+export default function SearchPage() {
+    return (
+        <Suspense fallback={
+            <div style={{ padding: '2rem', textAlign: 'center', fontFamily: 'system-ui' }}>
+                Loading search results...
+            </div>
+        }>
+            <SearchResults />
+        </Suspense>
+    )
+}
+

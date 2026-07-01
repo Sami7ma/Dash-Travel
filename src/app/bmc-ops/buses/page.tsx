@@ -5,7 +5,8 @@ import { useEffect, useState } from 'react'
 interface Bus {
     id: string
     plate_number: string
-    total_seats: number
+    total_rows: number
+    total_cols: number
     bus_type: string
     created_at: string
 }
@@ -18,7 +19,7 @@ export default function BusesAdmin() {
 
     // Form states
     const [plateNumber, setPlateNumber] = useState('')
-    const [totalSeats, setTotalSeats] = useState(49)
+    const [totalSeats, setTotalSeats] = useState(48) // default capacity
     const [busType, setBusType] = useState('STANDARD')
     const [editingBus, setEditingBus] = useState<Bus | null>(null)
 
@@ -97,7 +98,7 @@ export default function BusesAdmin() {
                 body: JSON.stringify({
                     id: editingBus.id,
                     plate_number: editingBus.plate_number,
-                    total_seats: editingBus.total_seats,
+                    total_seats: editingBus.total_rows * editingBus.total_cols,
                     bus_type: editingBus.bus_type,
                 }),
             })
@@ -181,7 +182,7 @@ export default function BusesAdmin() {
                                     {buses.map(bus => (
                                         <tr key={bus.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
                                             <td style={{ padding: '12px 14px', fontFamily: 'monospace', fontWeight: 700, fontSize: '0.9rem' }}>{bus.plate_number}</td>
-                                            <td style={{ padding: '12px 14px' }}>{bus.total_seats} Seats</td>
+                                            <td style={{ padding: '12px 14px' }}>{bus.total_rows * bus.total_cols} Seats</td>
                                             <td style={{ padding: '12px 14px' }}>
                                                 <span style={{
                                                     padding: '2px 8px', borderRadius: 12, fontSize: '0.7rem', fontWeight: 600,
@@ -238,8 +239,11 @@ export default function BusesAdmin() {
                                     <input 
                                         type="number" 
                                         className="input" 
-                                        value={editingBus.total_seats} 
-                                        onChange={e => setEditingBus({ ...editingBus, total_seats: parseInt(e.target.value) })}
+                                        value={editingBus.total_rows * editingBus.total_cols} 
+                                        onChange={e => {
+                                            const seats = parseInt(e.target.value) || 40
+                                            setEditingBus({ ...editingBus, total_cols: 4, total_rows: Math.ceil(seats / 4) })
+                                        }}
                                         required
                                         min={1}
                                         max={100}

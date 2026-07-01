@@ -14,8 +14,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Bemengede — Book Bus Tickets",
-  description: "Book bus tickets across Ethiopia. Search routes, pick seats, pay online.",
+  title: "DashBus — Book Bus Tickets",
+  description: "Book bus tickets across Ethiopia with DashBus. Search routes, pick your seat, pay online with Chapa, and ride.",
 };
 
 export default function RootLayout({

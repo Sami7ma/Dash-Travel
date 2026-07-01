@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from 'react'
+import React, { useEffect, useState } from 'react'
 
 interface StaffMember {
     id: string
@@ -189,9 +189,8 @@ export default function AuditAdmin() {
                                     const colors = getActionColor(log.action)
                                     const isExpanded = expandedLogId === log.id
                                     return (
-                                        <>
+                                        <React.Fragment key={log.id}>
                                             <tr 
-                                                key={log.id} 
                                                 style={{ borderBottom: '1px solid rgba(255,255,255,0.04)', cursor: 'pointer' }}
                                                 onClick={() => setExpandedLogId(isExpanded ? null : log.id)}
                                             >
@@ -258,7 +257,7 @@ export default function AuditAdmin() {
                                                     </td>
                                                 </tr>
                                             )}
-                                        </>
+                                        </React.Fragment>
                                     )
                                 })}
                                 {logs.length === 0 && !loading && (

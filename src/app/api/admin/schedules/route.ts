@@ -10,37 +10,32 @@ export async function GET(req: NextRequest) {
     const url = new URL(req.url)
     const date = url.searchParams.get('date')
 
-    const SELECT_PRIMARY = '*, routes(origin:cities!routes_origin_id_fkey(name), destination:cities!routes_destination_id_fkey(name), base_price_etb), buses(plate_number, total_seats, bus_type)'
-    const SELECT_FALLBACK = '*, routes(origin:cities!routes_origin_city_fkey(name), destination:cities!routes_destination_city_fkey(name), base_price_etb), buses(plate_number, total_seats, bus_type)'
-
-    let baseQuery = supabaseAdmin
+    // Use simple join — Supabase resolves origin_id/destination_id FKs to cities automatically
+    let query = supabaseAdmin
         .from('schedules')
-        .select(SELECT_PRIMARY)
+        .select(`
+            id, route_id, bus_id, departure_date, departure_time, arrival_time, status, created_at,
+            routes:route_id (
+                id, base_price_etb,
+                origin:origin_id ( name ),
+                destination:destination_id ( name )
+            ),
+            buses:bus_id (
+                id, plate_number, bus_type, total_rows, total_cols
+            )
+        `)
         .order('departure_date', { ascending: false })
-        .limit(100)
+        .limit(200)
 
-    if (date) baseQuery = baseQuery.eq('departure_date', date)
+    if (date) query = query.eq('departure_date', date)
 
-    let { data, error } = await baseQuery
+    const { data, error } = await query
 
-    if (error) {
-        // Fallback: try origin_city FK name convention
-        let fallbackQuery = supabaseAdmin
-            .from('schedules')
-            .select(SELECT_FALLBACK)
-            .order('departure_date', { ascending: false })
-            .limit(100)
-        if (date) fallbackQuery = fallbackQuery.eq('departure_date', date)
-
-        const fallback = await fallbackQuery
-        if (fallback.error) return NextResponse.json({ error: fallback.error.message }, { status: 500 })
-        data = fallback.data
-    }
-
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
     return NextResponse.json(data)
 }
 
-// POST — create new schedule
+// POST — create new schedule + auto-generate seats
 export async function POST(req: NextRequest) {
     const staff = await getCurrentStaff()
     if (!staff) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -65,26 +60,26 @@ export async function POST(req: NextRequest) {
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-    // Auto-generate seats for this schedule
+    // Auto-generate seats from bus dimensions
     const { data: bus } = await supabaseAdmin
         .from('buses')
-        .select('total_seats')
+        .select('total_rows, total_cols')
         .eq('id', bus_id)
         .single()
 
     if (bus) {
+        const totalRows = bus.total_rows || 13
+        const totalCols = bus.total_cols || 4
+        const colLabels = ['A', 'B', 'C', 'D']
         const seats = []
-        const totalSeats = bus.total_seats || 49
-        const cols = ['A', 'B', 'C', 'D']
-        const rows = Math.ceil(totalSeats / 4)
 
-        for (let r = 1; r <= rows; r++) {
-            for (const c of cols) {
-                if (seats.length >= totalSeats) break
+        for (let r = 1; r <= totalRows; r++) {
+            for (let c = 0; c < totalCols; c++) {
                 seats.push({
                     schedule_id: schedule.id,
-                    seat_number: `${r}${c}`,
-                    seat_type: r === 1 ? 'PREMIUM' : 'REGULAR',
+                    seat_number: `${r}${colLabels[c]}`,
+                    col_index: c,
+                    seat_type: (c === 0 || c === totalCols - 1) ? 'WINDOW' : 'AISLE',
                     is_booked: false,
                 })
             }
@@ -102,7 +97,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(schedule, { status: 201 })
 }
 
-// PUT — update schedule
+// PUT — update schedule (status OR date/time)
 export async function PUT(req: NextRequest) {
     const staff = await getCurrentStaff()
     if (!staff) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -110,16 +105,22 @@ export async function PUT(req: NextRequest) {
     const { id, ...updates } = await req.json()
     if (!id) return NextResponse.json({ error: 'Schedule ID required' }, { status: 400 })
 
+    // Whitelist allowed update fields
+    const allowed = ['status', 'departure_date', 'departure_time', 'arrival_time', 'bus_id', 'route_id']
+    const filtered = Object.fromEntries(
+        Object.entries(updates).filter(([k]) => allowed.includes(k))
+    )
+
     const { data, error } = await supabaseAdmin
         .from('schedules')
-        .update(updates)
+        .update(filtered)
         .eq('id', id)
         .select()
         .single()
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-    await logAudit({ staffId: staff.staffId, action: 'UPDATE', entityType: 'schedule', entityId: id, details: updates })
+    await logAudit({ staffId: staff.staffId, action: 'UPDATE', entityType: 'schedule', entityId: id, details: filtered })
     return NextResponse.json(data)
 }
 

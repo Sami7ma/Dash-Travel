@@ -84,8 +84,8 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                     }}>🛡️</div>
                     {sidebarOpen && (
                         <div>
-                            <p style={{ fontFamily: 'Outfit, sans-serif', fontWeight: 700, fontSize: '0.85rem', letterSpacing: 0.5 }}>Bemengede</p>
-                            <p style={{ fontSize: '0.65rem', color: '#64748b' }}>Operations</p>
+                            <p style={{ fontFamily: 'Outfit, sans-serif', fontWeight: 700, fontSize: '0.85rem', letterSpacing: 0.5 }}>DashBus</p>
+                            <p style={{ fontSize: '0.65rem', color: '#64748b' }}>Bus Management Platform</p>
                         </div>
                     )}
                 </div>

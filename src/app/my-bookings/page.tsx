@@ -10,6 +10,15 @@ export default function MyBookings() {
     const [loading, setLoading] = useState(false)
     const [searched, setSearched] = useState(false)
     const [cancellingId, setCancellingId] = useState<string | null>(null)
+    
+    // Custom Alert & Confirm states
+    const [alertState, setAlertState] = useState<{ show: boolean; title: string; message: string; type: 'success' | 'error' | 'info' }>({
+        show: false,
+        title: '',
+        message: '',
+        type: 'info'
+    })
+    const [confirmCancel, setConfirmCancel] = useState<{ ref: string; seats: string[]; price: number } | null>(null)
 
     const handleLookup = async (e: React.FormEvent) => {
         e.preventDefault()
@@ -63,26 +72,42 @@ export default function MyBookings() {
     }
 
     const handleCancel = async (ref: string) => {
-        if (!confirm('Are you sure you want to cancel this booking?')) return
+        setConfirmCancel(null)
         setCancellingId(ref)
 
-        const res = await fetch('/api/bookings/cancel', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ bookingRef: ref, phone }),
-        })
-        const data = await res.json()
+        try {
+            const res = await fetch('/api/bookings/cancel', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ bookingRef: ref, phone }),
+            })
+            const data = await res.json()
 
-        if (data.success) {
-            const seatText = data.cancelledCount > 1 ? `${data.cancelledCount} seats` : '1 seat'
-            alert(`Cancelled ${seatText}!\n${data.refundMessage}\nRefund: ${data.refundAmount} ETB`)
-            // Refresh
-            const refreshRes = await fetch(`/api/bookings/lookup?phone=${phone}`)
-            const refreshData = await refreshRes.json()
-            // Re-process groups
-            handleLookup({ preventDefault: () => {} } as any)
-        } else {
-            alert('Error: ' + data.error)
+            if (data.success) {
+                const seatText = data.cancelledCount > 1 ? `${data.cancelledCount} seats` : '1 seat'
+                setAlertState({
+                    show: true,
+                    title: 'Trip Cancelled Successfully',
+                    message: `Cancelled ${seatText}! ${data.refundMessage || ''} Refund: ${data.refundAmount || 0} ETB.`,
+                    type: 'success'
+                })
+                // Re-process groups
+                handleLookup({ preventDefault: () => {} } as any)
+            } else {
+                setAlertState({
+                    show: true,
+                    title: 'Cancellation Denied',
+                    message: data.error || "This booking cannot be cancelled (it may have departed or time has expired).",
+                    type: 'error'
+                })
+            }
+        } catch {
+            setAlertState({
+                show: true,
+                title: 'Request Failed',
+                message: 'Connection error while processing cancellation. Please try again.',
+                type: 'error'
+            })
         }
         setCancellingId(null)
     }
@@ -210,7 +235,11 @@ export default function MyBookings() {
 
                                         {!isCancelled && !isExpired && (
                                             <button
-                                                onClick={() => handleCancel(cancelRef)}
+                                                onClick={() => setConfirmCancel({
+                                                    ref: cancelRef,
+                                                    seats: b._allSeats,
+                                                    price: b._totalPrice
+                                                })}
                                                 disabled={cancellingId === cancelRef}
                                                 className="btn btn-sm btn-danger"
                                                 style={{ fontSize: '0.75rem' }}
@@ -225,6 +254,90 @@ export default function MyBookings() {
                     )
                 })}
             </div>
+
+            {/* Custom Confirm Cancel Modal */}
+            {confirmCancel && (
+                <div style={{
+                    position: 'fixed', inset: 0, zIndex: 100,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(8px)'
+                }}>
+                    <div className="glass" style={{ padding: '2rem', maxWidth: 420, width: '90%', textAlign: 'center', border: '1px solid rgba(239,68,68,0.25)' }}>
+                        <div style={{ fontSize: '2.5rem', marginBottom: '0.5rem' }}>⚠️</div>
+                        <h3 style={{ fontSize: '1.25rem', fontWeight: 700, marginBottom: '0.75rem', color: '#f87171' }}>Confirm Cancellation</h3>
+                        <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginBottom: '1.5rem', lineHeight: 1.5 }}>
+                            Are you sure you want to cancel booking <strong style={{ color: '#f1f5f9' }}>{confirmCancel.ref}</strong>?<br />
+                            This will cancel <span style={{ color: '#fbbf24', fontWeight: 600 }}>{confirmCancel.seats.length} seats ({confirmCancel.seats.join(', ')})</span>. 
+                            Cancellation is permanent and subject to our tiered refund policy.
+                        </p>
+                        <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'center' }}>
+                            <button 
+                                className="btn btn-danger btn-sm" 
+                                style={{ padding: '10px 20px' }}
+                                onClick={() => handleCancel(confirmCancel.ref)}
+                            >
+                                Yes, Cancel Booking
+                            </button>
+                            <button 
+                                className="btn btn-outline btn-sm" 
+                                style={{ padding: '10px 20px' }}
+                                onClick={() => setConfirmCancel(null)}
+                            >
+                                Keep Booking
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Custom Beautiful Alert / Error Modal */}
+            {alertState.show && (
+                <div style={{
+                    position: 'fixed', inset: 0, zIndex: 101,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(8px)'
+                }}>
+                    <div className="glass" style={{ 
+                        padding: '2rem', 
+                        maxWidth: 420, 
+                        width: '90%', 
+                        textAlign: 'center',
+                        border: `1px solid ${alertState.type === 'success' ? 'rgba(34,197,94,0.3)' : alertState.type === 'error' ? 'rgba(239,68,68,0.3)' : 'rgba(255,255,255,0.1)'}` 
+                    }}>
+                        <div style={{ 
+                            fontSize: '2.5rem', 
+                            marginBottom: '0.5rem',
+                            color: alertState.type === 'success' ? '#4ade80' : alertState.type === 'error' ? '#f87171' : '#fbbf24'
+                        }}>
+                            {alertState.type === 'success' ? '✅' : alertState.type === 'error' ? '❌' : 'ℹ️'}
+                        </div>
+                        <h3 style={{ 
+                            fontSize: '1.25rem', 
+                            fontWeight: 700, 
+                            marginBottom: '0.75rem',
+                            color: alertState.type === 'success' ? '#4ade80' : alertState.type === 'error' ? '#f87171' : '#f1f5f9'
+                        }}>
+                            {alertState.title}
+                        </h3>
+                        <p style={{ 
+                            color: 'var(--text-muted)', 
+                            fontSize: '0.85rem', 
+                            marginBottom: '1.5rem', 
+                            lineHeight: 1.5,
+                            whiteSpace: 'pre-line' 
+                        }}>
+                            {alertState.message}
+                        </p>
+                        <button 
+                            className="btn btn-gold btn-sm" 
+                            style={{ padding: '10px 24px', minWidth: '120px' }}
+                            onClick={() => setAlertState({ ...alertState, show: false })}
+                        >
+                            Dismiss
+                        </button>
+                    </div>
+                </div>
+            )}
         </div>
     )
 }

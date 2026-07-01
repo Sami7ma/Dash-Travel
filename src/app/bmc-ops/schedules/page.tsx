@@ -12,7 +12,8 @@ interface RouteInfo {
 interface Bus {
     id: string
     plate_number: string
-    total_seats: number
+    total_rows: number
+    total_cols: number
     bus_type: string
 }
 
@@ -49,7 +50,13 @@ export default function SchedulesAdmin() {
 
     // Modal/Delete states
     const [deletingScheduleId, setDeletingScheduleId] = useState<string | null>(null)
-    const [updatingStatusSchedule, setUpdatingStatusSchedule] = useState<Schedule | null>(null)
+    const [editingSchedule, setEditingSchedule] = useState<Schedule | null>(null)
+    const [editRouteId, setEditRouteId] = useState('')
+    const [editBusId, setEditBusId] = useState('')
+    const [editDepartureDate, setEditDepartureDate] = useState('')
+    const [editDepartureTime, setEditDepartureTime] = useState('')
+    const [editArrivalTime, setEditArrivalTime] = useState('')
+    const [editStatus, setEditStatus] = useState('')
 
     const fetchSchedules = async (dateFilter = '') => {
         setLoading(true)
@@ -133,8 +140,19 @@ export default function SchedulesAdmin() {
         }
     }
 
-    const handleStatusUpdate = async (status: string) => {
-        if (!updatingStatusSchedule) return
+    const openEditModal = (sched: Schedule) => {
+        setEditingSchedule(sched)
+        setEditRouteId(sched.route_id || '')
+        setEditBusId(sched.bus_id || '')
+        setEditDepartureDate(sched.departure_date || '')
+        setEditDepartureTime(sched.departure_time || '')
+        setEditArrivalTime(sched.arrival_time || '')
+        setEditStatus(sched.status || 'SCHEDULED')
+    }
+
+    const handleSaveSchedule = async (e: React.FormEvent) => {
+        e.preventDefault()
+        if (!editingSchedule) return
         setError('')
         setSuccess('')
 
@@ -143,21 +161,26 @@ export default function SchedulesAdmin() {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    id: updatingStatusSchedule.id,
-                    status: status,
+                    id: editingSchedule.id,
+                    route_id: editRouteId,
+                    bus_id: editBusId,
+                    departure_date: editDepartureDate,
+                    departure_time: editDepartureTime,
+                    arrival_time: editArrivalTime || null,
+                    status: editStatus,
                 }),
             })
 
             const data = await res.json()
             if (res.ok) {
-                setSuccess(`Schedule status updated to ${status}!`)
-                setUpdatingStatusSchedule(null)
+                setSuccess('Schedule details updated successfully!')
+                setEditingSchedule(null)
                 fetchSchedules(filterDate)
             } else {
-                setError(data.error || 'Failed to update schedule status')
+                setError(data.error || 'Failed to update schedule')
             }
         } catch {
-            setError('Failed to update schedule status')
+            setError('Failed to update schedule')
         }
     }
 
@@ -285,7 +308,7 @@ export default function SchedulesAdmin() {
                                                     <td style={{ padding: '12px 14px' }}>
                                                         <div style={{ fontWeight: 600, fontFamily: 'monospace' }}>{sched.buses?.plate_number}</div>
                                                         <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: 2 }}>
-                                                            {sched.buses?.total_seats} seats ({sched.buses?.bus_type})
+                                                            {sched.buses ? sched.buses.total_rows * sched.buses.total_cols : 0} seats ({sched.buses?.bus_type})
                                                         </div>
                                                     </td>
                                                     <td style={{ padding: '12px 14px' }}>
@@ -298,8 +321,8 @@ export default function SchedulesAdmin() {
                                                         <button 
                                                             className="btn btn-outline btn-sm" 
                                                             style={{ marginRight: 8, padding: '4px 10px', fontSize: '0.75rem' }}
-                                                            onClick={() => setUpdatingStatusSchedule(sched)}
-                                                        >Status</button>
+                                                            onClick={() => openEditModal(sched)}
+                                                        >Edit</button>
                                                         <button 
                                                             className="btn btn-danger btn-sm"
                                                             style={{ padding: '4px 10px', fontSize: '0.75rem' }}
@@ -352,7 +375,7 @@ export default function SchedulesAdmin() {
                                 <option value="">Choose a bus...</option>
                                 {buses.map(b => (
                                     <option key={b.id} value={b.id}>
-                                        {b.plate_number} ({b.total_seats} seats · {b.bus_type})
+                                        {b.plate_number} ({b.total_rows * b.total_cols} seats · {b.bus_type})
                                     </option>
                                 ))}
                             </select>
@@ -391,39 +414,107 @@ export default function SchedulesAdmin() {
                 </div>
             </div>
 
-            {/* Change Status Modal */}
-            {updatingStatusSchedule && (
+            {/* Edit Schedule Modal */}
+            {editingSchedule && (
                 <div style={{
                     position: 'fixed', inset: 0, zIndex: 100,
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)'
+                    background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)',
+                    overflowY: 'auto', padding: '2rem 0'
                 }}>
-                    <div className="glass" style={{ padding: '2rem', maxWidth: 400, width: '90%' }}>
-                        <h3 style={{ fontSize: '1.2rem', fontWeight: 700, marginBottom: '0.5rem', color: 'var(--gold)', textAlign: 'center' }}>Update Departure Status</h3>
-                        <p style={{ color: '#94a3b8', fontSize: '0.85rem', marginBottom: '1.5rem', textAlign: 'center' }}>
-                            Adjust transit status for {updatingStatusSchedule.routes?.origin?.name} to {updatingStatusSchedule.routes?.destination?.name} ({updatingStatusSchedule.departure_date}).
-                        </p>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                            {['SCHEDULED', 'IN_ROUTE', 'COMPLETED', 'CANCELLED'].map(status => (
-                                <button 
-                                    key={status}
-                                    className="btn btn-outline btn-sm"
-                                    style={{ 
-                                        justifyContent: 'flex-start',
-                                        background: updatingStatusSchedule.status === status ? 'rgba(255,255,255,0.05)' : 'transparent',
-                                        borderColor: updatingStatusSchedule.status === status ? 'var(--gold)' : 'rgba(255,255,255,0.1)'
-                                    }}
-                                    onClick={() => handleStatusUpdate(status)}
+                    <div className="glass" style={{ padding: '2rem', maxWidth: 450, width: '90%' }}>
+                        <h3 style={{ fontSize: '1.2rem', fontWeight: 700, marginBottom: '1.5rem', color: 'var(--gold)', textAlign: 'center' }}>Edit Schedule Details</h3>
+                        
+                        <form onSubmit={handleSaveSchedule} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                            <div>
+                                <label style={{ display: 'block', fontSize: '0.75rem', color: '#94a3b8', marginBottom: 6, fontWeight: 600 }}>SELECT ROUTE</label>
+                                <select 
+                                    className="select" 
+                                    value={editRouteId} 
+                                    onChange={e => setEditRouteId(e.target.value)}
+                                    required
                                 >
-                                    {updatingStatusSchedule.status === status ? '●' : '○'} {status}
-                                </button>
-                            ))}
-                            <button 
-                                className="btn btn-outline btn-sm" 
-                                style={{ marginTop: '0.5rem', border: 'none', color: '#64748b' }}
-                                onClick={() => setUpdatingStatusSchedule(null)}
-                            >Cancel</button>
-                        </div>
+                                    {routes.map(r => (
+                                        <option key={r.id} value={r.id}>
+                                            {r.origin?.name} ➔ {r.destination?.name} ({r.base_price_etb} ETB)
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+                            
+                            <div>
+                                <label style={{ display: 'block', fontSize: '0.75rem', color: '#94a3b8', marginBottom: 6, fontWeight: 600 }}>ASSIGN VEHICLE (BUS)</label>
+                                <select 
+                                    className="select" 
+                                    value={editBusId} 
+                                    onChange={e => setEditBusId(e.target.value)}
+                                    required
+                                >
+                                    {buses.map(b => (
+                                        <option key={b.id} value={b.id}>
+                                            {b.plate_number} ({b.total_rows * b.total_cols} seats · {b.bus_type})
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+
+                            <div>
+                                <label style={{ display: 'block', fontSize: '0.75rem', color: '#94a3b8', marginBottom: 6, fontWeight: 600 }}>DEPARTURE DATE</label>
+                                <input 
+                                    type="date" 
+                                    className="input" 
+                                    value={editDepartureDate} 
+                                    onChange={e => setEditDepartureDate(e.target.value)}
+                                    required
+                                />
+                            </div>
+
+                            <div style={{ display: 'flex', gap: '0.75rem' }}>
+                                <div style={{ flex: 1 }}>
+                                    <label style={{ display: 'block', fontSize: '0.75rem', color: '#94a3b8', marginBottom: 6, fontWeight: 600 }}>DEPARTURE TIME</label>
+                                    <input 
+                                        type="time" 
+                                        className="input" 
+                                        value={editDepartureTime} 
+                                        onChange={e => setEditDepartureTime(e.target.value)}
+                                        required
+                                    />
+                                </div>
+                                <div style={{ flex: 1 }}>
+                                    <label style={{ display: 'block', fontSize: '0.75rem', color: '#94a3b8', marginBottom: 6, fontWeight: 600 }}>ARRIVAL TIME</label>
+                                    <input 
+                                        type="time" 
+                                        className="input" 
+                                        value={editArrivalTime || ''} 
+                                        onChange={e => setEditArrivalTime(e.target.value)}
+                                    />
+                                </div>
+                            </div>
+
+                            <div>
+                                <label style={{ display: 'block', fontSize: '0.75rem', color: '#94a3b8', marginBottom: 6, fontWeight: 600 }}>TRANSIT STATUS</label>
+                                <select 
+                                    className="select" 
+                                    value={editStatus} 
+                                    onChange={e => setEditStatus(e.target.value)}
+                                    required
+                                >
+                                    <option value="SCHEDULED">SCHEDULED</option>
+                                    <option value="IN_ROUTE">IN_ROUTE</option>
+                                    <option value="COMPLETED">COMPLETED</option>
+                                    <option value="CANCELLED">CANCELLED</option>
+                                </select>
+                            </div>
+
+                            <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1rem' }}>
+                                <button type="submit" className="btn btn-emerald btn-full btn-sm">Save Changes</button>
+                                <button 
+                                    type="button" 
+                                    className="btn btn-outline btn-full btn-sm"
+                                    onClick={() => setEditingSchedule(null)}
+                                >Cancel</button>
+                            </div>
+                        </form>
                     </div>
                 </div>
             )}

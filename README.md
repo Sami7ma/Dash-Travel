@@ -2,7 +2,7 @@
 
 > **Full-stack bus booking system** built for Ethiopia. Search routes, pick seats in real-time, pay online with Chapa, and manage operations through a complete admin panel.
 
-[![Live Demo](https://img.shields.io/badge/Live-Vercel-black)](https://github.com/Sami7ma/BusrouteMangemnt_DSA_FINAL)
+[![Live Demo](https://img.shields.io/badge/Live-Vercel-black)](https://github.com/Sami7ma/Dash-Travel)
 [![Next.js](https://img.shields.io/badge/Next.js-App_Router-blue)](https://nextjs.org)
 [![Supabase](https://img.shields.io/badge/Database-Supabase-green)](https://supabase.com)
 
@@ -67,8 +67,8 @@
 ### 1. Clone & Install
 
 ```bash
-git clone https://github.com/Sami7ma/Dash Travel
-cd Dash Travel
+git clone https://github.com/Sami7ma/Dash-Travel
+cd Dash-Travel
 npm install
 ```
 

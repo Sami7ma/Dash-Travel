@@ -67,8 +67,8 @@
 ### 1. Clone & Install
 
 ```bash
-git clone https://github.com/Sami7ma/BusrouteMangemnt_DSA_FINAL.git
-cd BusrouteMangemnt_DSA_FINAL
+git clone https://github.com/Sami7ma/Dash Travel
+cd Dash Travel
 npm install
 ```
 

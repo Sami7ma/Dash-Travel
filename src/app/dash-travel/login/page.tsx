@@ -23,7 +23,7 @@ export default function StaffLogin() {
         const data = await res.json()
 
         if (data.success) {
-            router.push('/bmc-ops/dashboard')
+            router.push('/dash-travel/dashboard')
         } else {
             setError(data.error || 'Login failed')
         }
@@ -142,7 +142,7 @@ export default function StaffLogin() {
                 </form>
 
                 <p style={{ textAlign: 'center', color: '#475569', fontSize: '0.7rem', marginTop: '2rem' }}>
-                    Bemengede Transport Management System
+                    Dash Travel Operations System
                 </p>
             </div>
         </div>

@@ -1,4 +1,4 @@
-# DashBus — Ethiopian Bus Booking Platform
+# Dash Travel - Ethiopian Bus Booking Platform
 
 > **Full-stack bus booking system** built for Ethiopia. Search routes, pick seats in real-time, pay online with Chapa, and manage operations through a complete admin panel.
 
@@ -19,7 +19,7 @@
 - Receive a QR-code ticket you can share or print
 - Look up any booking by phone number, cancel with tiered refund
 
-**Operations side (`/bmc-ops`):**
+**Operations side (`/dash-travel`):**
 - Staff login with employee number + password (JWT sessions)
 - Dashboard with live KPI stats (revenue, bookings, buses, schedules)
 - Full CRUD for: buses, routes, schedules, bookings, staff
@@ -52,13 +52,13 @@
 | `/book` | Passenger | 3-step flow: select bus → pick seats → pay |
 | `/my-bookings` | Passenger | Phone-based booking lookup + cancel |
 | `/ticket/[ref]` | Passenger | Ticket with QR code |
-| `/bmc-ops/login` | Staff | Admin login |
-| `/bmc-ops/dashboard` | Admin | KPI stats overview |
-| `/bmc-ops/schedules` | Admin | Create/manage departures |
-| `/bmc-ops/routes` | Admin | Manage city-to-city routes |
-| `/bmc-ops/buses` | Super Admin | Fleet management |
-| `/bmc-ops/staff` | Super Admin | Staff accounts |
-| `/bmc-ops/audit` | Super Admin | Full audit trail |
+| `/dash-travel/login` | Staff | Admin login |
+| `/dash-travel/dashboard` | Admin | KPI stats overview |
+| `/dash-travel/schedules` | Admin | Create/manage departures |
+| `/dash-travel/routes` | Admin | Manage city-to-city routes |
+| `/dash-travel/buses` | Super Admin | Fleet management |
+| `/dash-travel/staff` | Super Admin | Staff accounts |
+| `/dash-travel/audit` | Super Admin | Full audit trail |
 
 ---
 
@@ -93,7 +93,7 @@ Go to **Supabase Dashboard → SQL Editor** and run these in order:
 
 ```
 migrations/002_admin_panel_fixed.sql   ← Creates staff + audit tables, seeds first admin
-migrations/003_rolling_schedules.sql   ← Seeds cities, routes, buses, and 7-day schedules
+migrations/003_rolling_schedules.sql   ← Seeds cities, routes, buses, and 3-day rolling schedules
 ```
 
 ### 4. Start Dev Server
@@ -113,11 +113,11 @@ Default super admin credentials (created by migration):
 | Field | Value |
 |---|---|
 | Employee Number | `SUPEMP001` |
-| Password | `Bemengede@2026` |
+| Password | `DashTravel@2026` |
 
 > ⚠️ Change this password immediately after first login in the Staff management page.
 
-To create new staff, log in as SUPER_ADMIN and go to `/bmc-ops/staff`.
+To create new staff, log in as SUPER_ADMIN and go to `/dash-travel/staff`.
 
 ---
 
@@ -155,7 +155,7 @@ src/
 │   ├── book/page.tsx             # Booking flow
 │   ├── my-bookings/page.tsx      # Phone lookup + cancel
 │   ├── ticket/[ref]/page.tsx     # QR ticket
-│   ├── bmc-ops/                  # Admin panel
+│   ├── dash-travel/              # Admin panel
 │   │   ├── layout.tsx            # Auth shell + sidebar
 │   │   ├── login/
 │   │   ├── dashboard/

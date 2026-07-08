@@ -48,7 +48,7 @@ export default function Home() {
         {/* Logo / Brand */}
         <div className={`${ready ? 'animate-in' : ''}`} style={{ opacity: ready ? 1 : 0, marginBottom: '0.5rem' }}>
           <p style={{ color: 'var(--gold)', fontFamily: 'Outfit', fontWeight: 600, fontSize: '0.9rem', letterSpacing: '3px', textTransform: 'uppercase' }}>
-            DashBus
+            Dash Travel
           </p>
         </div>
 

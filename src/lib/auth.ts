@@ -4,9 +4,9 @@ import { cookies } from 'next/headers'
 import { supabaseAdmin } from './supabaseAdmin'
 
 const JWT_SECRET = new TextEncoder().encode(
-    process.env.SUPABASE_SERVICE_ROLE_KEY?.slice(0, 32) || 'bemengede-admin-secret-key-2026!'
+    process.env.SUPABASE_SERVICE_ROLE_KEY?.slice(0, 32) || 'dash-travel-admin-secret-key-2026'
 )
-const COOKIE_NAME = 'bmc-staff-token'
+const COOKIE_NAME = 'dash-travel-staff-token'
 
 // ── Password ──────────────────────────────────────────────────
 export async function hashPassword(password: string): Promise<string> {

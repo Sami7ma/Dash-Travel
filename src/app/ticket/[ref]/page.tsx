@@ -81,7 +81,7 @@ export default function TicketPage() {
         const ctx = canvas.getContext('2d')
         if (!ctx) return
 
-        const data = `BEMENGEDE:${ref}:${bookings.map(b => b.seats?.seat_number).join(',')}`
+        const data = `DASH_TRAVEL:${ref}:${bookings.map(b => b.seats?.seat_number).join(',')}`
         const size = 140
         canvas.width = size
         canvas.height = size
@@ -205,7 +205,7 @@ export default function TicketPage() {
                 }}>
                     {/* Header */}
                     <p style={{ fontFamily: 'Outfit', fontWeight: 600, fontSize: '0.85rem', color: 'var(--gold)', letterSpacing: '2px', textTransform: 'uppercase', marginBottom: '0.75rem' }}>
-                        BEMENGEDE
+                        DASH TRAVEL
                     </p>
 
                     <div className={`badge ${badgeClass}`} style={{ marginBottom: '1rem' }}>

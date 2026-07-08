@@ -14,12 +14,12 @@ setInterval(() => {
 }, 300_000)
 
 // ─── Admin panel path (obscured) ─────────────────────────────
-const ADMIN_PATH = '/bmc-ops'
+const ADMIN_PATH = '/dash-travel'
 const ADMIN_LOGIN_PATH = `${ADMIN_PATH}/login`
 const JWT_SECRET = new TextEncoder().encode(
-    process.env.SUPABASE_SERVICE_ROLE_KEY?.slice(0, 32) || 'bemengede-admin-secret-key-2026!'
+    process.env.SUPABASE_SERVICE_ROLE_KEY?.slice(0, 32) || 'dash-travel-admin-secret-key-2026'
 )
-const COOKIE_NAME = 'bmc-staff-token'
+const COOKIE_NAME = 'dash-travel-staff-token'
 
 export async function middleware(req: NextRequest) {
     const path = req.nextUrl.pathname
@@ -68,5 +68,5 @@ export async function middleware(req: NextRequest) {
 }
 
 export const config = {
-    matcher: ['/api/:path*', '/bmc-ops/:path*'],
+    matcher: ['/api/:path*', '/dash-travel/:path*'],
 }

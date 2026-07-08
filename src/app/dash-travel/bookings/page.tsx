@@ -149,7 +149,7 @@ export default function BookingsAdmin() {
                     <input 
                         type="text" 
                         className="input" 
-                        placeholder="Search name, phone, BMG-XXXXX..." 
+                        placeholder="Search name, phone, DT-XXXXX..." 
                         value={searchQuery}
                         onChange={e => setSearchQuery(e.target.value)}
                         style={{ padding: '10px 14px', fontSize: '0.9rem' }}

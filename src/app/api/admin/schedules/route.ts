@@ -2,6 +2,57 @@ import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabaseAdmin'
 import { getCurrentStaff, logAudit } from '@/lib/auth'
 
+function getSeatColumnLabel(index: number) {
+    let label = ''
+    let value = index
+
+    do {
+        label = String.fromCharCode(65 + (value % 26)) + label
+        value = Math.floor(value / 26) - 1
+    } while (value >= 0)
+
+    return label
+}
+
+async function ensureSeats(scheduleId: string, busId: string) {
+    const { data: bus, error: busError } = await supabaseAdmin
+        .from('buses')
+        .select('total_rows, total_cols')
+        .eq('id', busId)
+        .single()
+
+    if (busError || !bus) {
+        throw new Error(busError?.message || 'Bus not found for seat generation')
+    }
+
+    const totalRows = bus.total_rows || 13
+    const totalCols = bus.total_cols || 4
+    const seats = []
+
+    for (let row = 1; row <= totalRows; row++) {
+        for (let col = 0; col < totalCols; col++) {
+            seats.push({
+                schedule_id: scheduleId,
+                seat_number: `${row}${getSeatColumnLabel(col)}`,
+                col_index: col,
+                seat_type: col === 0 || col === totalCols - 1 ? 'WINDOW' : 'AISLE',
+                is_booked: false,
+            })
+        }
+    }
+
+    if (seats.length === 0) return
+
+    const { error } = await supabaseAdmin
+        .from('seats')
+        .upsert(seats, {
+            onConflict: 'schedule_id,seat_number',
+            ignoreDuplicates: true,
+        })
+
+    if (error) throw new Error(error.message)
+}
+
 // GET — list schedules with route + bus info
 export async function GET(req: NextRequest) {
     const staff = await getCurrentStaff()
@@ -60,32 +111,11 @@ export async function POST(req: NextRequest) {
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-    // Auto-generate seats from bus dimensions
-    const { data: bus } = await supabaseAdmin
-        .from('buses')
-        .select('total_rows, total_cols')
-        .eq('id', bus_id)
-        .single()
-
-    if (bus) {
-        const totalRows = bus.total_rows || 13
-        const totalCols = bus.total_cols || 4
-        const colLabels = ['A', 'B', 'C', 'D']
-        const seats = []
-
-        for (let r = 1; r <= totalRows; r++) {
-            for (let c = 0; c < totalCols; c++) {
-                seats.push({
-                    schedule_id: schedule.id,
-                    seat_number: `${r}${colLabels[c]}`,
-                    col_index: c,
-                    seat_type: (c === 0 || c === totalCols - 1) ? 'WINDOW' : 'AISLE',
-                    is_booked: false,
-                })
-            }
-        }
-
-        await supabaseAdmin.from('seats').insert(seats)
+    try {
+        await ensureSeats(schedule.id, bus_id)
+    } catch (seatError: unknown) {
+        const message = seatError instanceof Error ? seatError.message : 'Unknown seat generation error'
+        return NextResponse.json({ error: `Schedule created, but seats could not be generated: ${message}` }, { status: 500 })
     }
 
     await logAudit({

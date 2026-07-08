@@ -34,13 +34,13 @@ CREATE INDEX IF NOT EXISTS idx_audit_logs_created_at ON audit_logs(created_at DE
 CREATE INDEX IF NOT EXISTS idx_audit_logs_action ON audit_logs(action);
 
 -- ═══ 3. SEED FIRST SUPER ADMIN ═══════════════════════════════
--- Password: "Bemengede@2026" (bcrypt hash generated offline)
+-- Password: "DashTravel@2026" (bcrypt hash generated offline)
 -- IMPORTANT: Change this password immediately after first login!
 INSERT INTO staff (emp_number, full_name, password_hash, role, is_active)
 VALUES (
     'SUPEMP001',
     'System Administrator',
-    '$2a$12$LJ3a4F8K5Q2X1Y0Z9W8vOe7N6M5k4J3h2G1f0E9d8C7b6A5a4Z3y',
+    '$2b$12$FwtCHXnJUWIsVwJ93BHaCuXIjRtZZEMWm18bDjD6GqE/YwRiWPCcu',
     'SUPER_ADMIN',
     true
 ) ON CONFLICT (emp_number) DO NOTHING;

@@ -10,13 +10,13 @@ interface StaffInfo {
 }
 
 const ADMIN_NAV = [
-    { href: '/bmc-ops/dashboard', label: 'Dashboard', icon: '📊', roles: ['ADMIN', 'SUPER_ADMIN'] },
-    { href: '/bmc-ops/schedules', label: 'Schedules', icon: '📅', roles: ['ADMIN', 'SUPER_ADMIN'] },
-    { href: '/bmc-ops/routes', label: 'Routes', icon: '🛤️', roles: ['ADMIN', 'SUPER_ADMIN'] },
-    { href: '/bmc-ops/buses', label: 'Buses', icon: '🚌', roles: ['SUPER_ADMIN'] },
-    { href: '/bmc-ops/bookings', label: 'Bookings', icon: '🎫', roles: ['ADMIN', 'SUPER_ADMIN'] },
-    { href: '/bmc-ops/staff', label: 'Staff', icon: '👥', roles: ['SUPER_ADMIN'] },
-    { href: '/bmc-ops/audit', label: 'Audit Log', icon: '📋', roles: ['SUPER_ADMIN'] },
+    { href: '/dash-travel/dashboard', label: 'Dashboard', icon: '📊', roles: ['ADMIN', 'SUPER_ADMIN'] },
+    { href: '/dash-travel/schedules', label: 'Schedules', icon: '📅', roles: ['ADMIN', 'SUPER_ADMIN'] },
+    { href: '/dash-travel/routes', label: 'Routes', icon: '🛤️', roles: ['ADMIN', 'SUPER_ADMIN'] },
+    { href: '/dash-travel/buses', label: 'Buses', icon: '🚌', roles: ['SUPER_ADMIN'] },
+    { href: '/dash-travel/bookings', label: 'Bookings', icon: '🎫', roles: ['ADMIN', 'SUPER_ADMIN'] },
+    { href: '/dash-travel/staff', label: 'Staff', icon: '👥', roles: ['SUPER_ADMIN'] },
+    { href: '/dash-travel/audit', label: 'Audit Log', icon: '📋', roles: ['SUPER_ADMIN'] },
 ]
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
@@ -34,7 +34,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                 const data = await res.json()
                 setStaff(data.staff)
             } else {
-                router.push('/bmc-ops/login')
+                router.push('/dash-travel/login')
             }
             setLoading(false)
         }
@@ -43,11 +43,11 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
     const handleLogout = async () => {
         await fetch('/api/staff/logout', { method: 'POST' })
-        router.push('/bmc-ops/login')
+        router.push('/dash-travel/login')
     }
 
     // Login page bypasses the admin shell (safe here — after all hooks)
-    if (pathname === '/bmc-ops/login') return <>{children}</>
+    if (pathname === '/dash-travel/login') return <>{children}</>
 
     if (loading) return (
         <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#0a0e1a' }}>
@@ -84,8 +84,8 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                     }}>🛡️</div>
                     {sidebarOpen && (
                         <div>
-                            <p style={{ fontFamily: 'Outfit, sans-serif', fontWeight: 700, fontSize: '0.85rem', letterSpacing: 0.5 }}>DashBus</p>
-                            <p style={{ fontSize: '0.65rem', color: '#64748b' }}>Bus Management Platform</p>
+                            <p style={{ fontFamily: 'Outfit, sans-serif', fontWeight: 700, fontSize: '0.85rem', letterSpacing: 0.5 }}>Dash Travel</p>
+                            <p style={{ fontSize: '0.65rem', color: '#64748b' }}>Travel Operations Platform</p>
                         </div>
                     )}
                 </div>

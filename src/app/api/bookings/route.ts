@@ -5,7 +5,7 @@ import { randomBytes } from 'crypto'
 
 // Cryptographically strong booking ref — 10 hex chars = ~1 trillion combos
 function generateRef(): string {
-    return 'BMG-' + randomBytes(5).toString('hex').toUpperCase()
+    return 'DT-' + randomBytes(5).toString('hex').toUpperCase()
 }
 
 export async function POST(req: NextRequest) {
@@ -171,7 +171,7 @@ export async function POST(req: NextRequest) {
                 callback_url: `${process.env.NEXT_PUBLIC_BASE_URL}/api/webhooks/chapa`,
                 return_url: `${process.env.NEXT_PUBLIC_BASE_URL}/ticket/${groupRef}`,
                 customization: {
-                    title: 'Bemengede',
+                    title: 'Dash Travel',
                     description: `${seats.length} seat${seats.length > 1 ? 's' : ''} - ${seats.join(' ')}`.replace(/[^a-zA-Z0-9\s\-_.]/g, '').substring(0, 50),
                 },
             }),

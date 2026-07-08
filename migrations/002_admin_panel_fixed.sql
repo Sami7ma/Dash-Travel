@@ -56,12 +56,12 @@ CREATE INDEX IF NOT EXISTS idx_audit_logs_created_at ON audit_logs(created_at DE
 CREATE INDEX IF NOT EXISTS idx_audit_logs_action     ON audit_logs(action);
 
 -- ═══ STEP 4: Seed the first Super Admin ══════════════════════
--- Password: Bemengede@2026  (real bcrypt hash — cost 12)
+-- Password: DashTravel@2026  (real bcrypt hash - cost 12)
 INSERT INTO staff (emp_number, full_name, password_hash, role, is_active)
 VALUES (
     'SUPEMP001',
     'System Administrator',
-    '$2b$12$xQqQsHOoe1mx2umL/mul4et2sLeuYqqu53et9WKuCjXznyMejJEte',
+    '$2b$12$FwtCHXnJUWIsVwJ93BHaCuXIjRtZZEMWm18bDjD6GqE/YwRiWPCcu',
     'SUPER_ADMIN',
     true
 ) ON CONFLICT (emp_number) DO NOTHING;

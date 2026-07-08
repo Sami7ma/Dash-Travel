@@ -13,7 +13,7 @@ export async function GET(req: NextRequest) {
 
     let query = supabaseAdmin
         .from('bookings')
-        .select('*, group_ref, passengers(full_name, phone), seats(seat_number, schedules(departure_date, departure_time, routes(origin:cities!routes_origin_id_fkey(name), destination:cities!routes_destination_id_fkey(name))))')
+        .select('*, group_ref, passengers(full_name, phone), seats(seat_number, schedules(departure_date, departure_time, routes(origin:origin_id(name), destination:destination_id(name)))))')
         .order('booked_at', { ascending: false })
         .limit(limit)
 

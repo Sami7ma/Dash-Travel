@@ -18,7 +18,7 @@ export default function SeatPicker() {
             // 1. Load the schedule info WITH the route price
             const { data: schedData } = await supabase
                 .from('schedules')
-                .select('*, buses(*), routes(base_price_etb, origin:cities!routes_origin_id_fkey(name), destination:cities!routes_destination_id_fkey(name))')
+                .select('*, buses(*), routes(base_price_etb, origin:origin_id(name), destination:destination_id(name))')
                 .eq('id', id)
                 .single()
 

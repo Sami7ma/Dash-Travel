@@ -46,7 +46,7 @@ export default function AdminDashboard() {
         <div>
             <h1 style={{ fontSize: '1.6rem', fontWeight: 700, marginBottom: '0.5rem' }}>Dashboard</h1>
             <p style={{ color: '#64748b', marginBottom: '2rem' }}>
-                Overview of Bemengede operations · {new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+                Overview of Dash Travel operations · {new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
             </p>
 
             {/* Stats Grid */}

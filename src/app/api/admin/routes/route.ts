@@ -10,14 +10,14 @@ export async function GET() {
     // Try both FK name conventions (origin_id vs origin_city column names)
     let { data, error } = await supabaseAdmin
         .from('routes')
-        .select('*, origin:cities!routes_origin_id_fkey(id, name), destination:cities!routes_destination_id_fkey(id, name)')
+        .select('*, origin:origin_id(id, name), destination:destination_id(id, name)')
         .order('id', { ascending: false })
 
     // Fallback: some databases use origin_city / destination_city as column names
     if (error) {
         const fallback = await supabaseAdmin
             .from('routes')
-            .select('*, origin:cities!routes_origin_city_fkey(id, name), destination:cities!routes_destination_city_fkey(id, name)')
+            .select('*, origin:origin_city(id, name), destination:destination_city(id, name)')
             .order('id', { ascending: false })
         if (fallback.error) {
             // Last resort: return routes without city name join

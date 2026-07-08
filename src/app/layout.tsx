@@ -14,8 +14,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "DashBus — Book Bus Tickets",
-  description: "Book bus tickets across Ethiopia with DashBus. Search routes, pick your seat, pay online with Chapa, and ride.",
+  title: "Dash Travel - Book Bus Tickets",
+  description: "Book bus tickets across Ethiopia with Dash Travel. Search routes, pick your seat, pay online with Chapa, and ride.",
 };
 
 export default function RootLayout({

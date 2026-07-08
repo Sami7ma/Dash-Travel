@@ -19,7 +19,7 @@ export async function GET(req: NextRequest) {
             id, booking_ref, group_ref, seat_traveller_name,
             price_etb, trip_type, payment_status, status,
             booked_at, paid_at, cancelled_at, chapa_tx_ref,
-            seats ( seat_number, seat_type, schedules(departure_date, departure_time, arrival_time, routes(origin:cities!routes_origin_id_fkey(name), destination:cities!routes_destination_id_fkey(name))) ),
+            seats ( seat_number, seat_type, schedules(departure_date, departure_time, arrival_time, routes(origin:origin_id(name), destination:destination_id(name))) ),
             passengers ( full_name, phone )
         `)
         .or(`booking_ref.eq.${ref},group_ref.eq.${ref}`)

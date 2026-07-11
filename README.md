@@ -196,4 +196,4 @@ src/
 
 ## 📄 License
 
-Built as a DSA final project. All rights reserved.
+All rights reserved.

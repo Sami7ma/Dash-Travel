@@ -1,30 +1,24 @@
 "use client"
 
 import { useEffect, useState } from 'react'
-
-interface Stats {
-    totalBookings: number
-    paidBookings: number
-    pendingBookings: number
-    cancelledBookings: number
-    totalRevenue: number
-    todayBookings: number
-    activeSchedules: number
-    totalBuses: number
-}
+import type { StatsResponse, Booking } from '@/lib/types'
 
 export default function AdminDashboard() {
-    const [stats, setStats] = useState<Stats | null>(null)
+    const [stats, setStats] = useState<StatsResponse['stats'] | null>(null)
     const [loading, setLoading] = useState(true)
-    const [recentBookings, setRecentBookings] = useState<any[]>([])
+    const [recentBookings, setRecentBookings] = useState<Booking[]>([])
 
     useEffect(() => {
         async function loadStats() {
-            const res = await fetch('/api/admin/stats')
-            if (res.ok) {
-                const data = await res.json()
-                setStats(data.stats)
-                setRecentBookings(data.recentBookings || [])
+            try {
+                const res = await fetch('/api/admin/stats')
+                if (res.ok) {
+                    const data: StatsResponse = await res.json()
+                    setStats(data.stats)
+                    setRecentBookings(data.recentBookings || [])
+                }
+            } catch {
+                // Stats load failure — non-fatal, shows empty state
             }
             setLoading(false)
         }
@@ -53,7 +47,7 @@ export default function AdminDashboard() {
             {loading ? (
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '1rem' }}>
                     {[1,2,3,4,5,6,7,8].map(i => (
-                        <div key={i} style={{ background: 'rgba(255,255,255,0.03)', borderRadius: 12, height: 100 }} />
+                        <div key={i} className="skeleton" style={{ height: 100, borderRadius: 12 }} />
                     ))}
                 </div>
             ) : (
@@ -70,7 +64,7 @@ export default function AdminDashboard() {
                                 <span style={{ fontSize: '0.75rem', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.5, fontWeight: 600 }}>
                                     {card.label}
                                 </span>
-                                <span style={{ fontSize: '1.2rem' }}>{card.icon}</span>
+                                <span style={{ fontSize: '1.2rem' }} role="img" aria-hidden="true">{card.icon}</span>
                             </div>
                             <p style={{ fontSize: '1.8rem', fontWeight: 800, fontFamily: 'Outfit, sans-serif', color: '#f1f5f9' }}>
                                 {card.value}
@@ -102,7 +96,7 @@ export default function AdminDashboard() {
                             </tr>
                         </thead>
                         <tbody>
-                            {recentBookings.map((b: any) => (
+                            {recentBookings.map((b) => (
                                 <tr key={b.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
                                     <td style={{ padding: '10px 14px', fontFamily: 'monospace', fontWeight: 600 }}>{b.booking_ref}</td>
                                     <td style={{ padding: '10px 14px' }}>{b.seat_traveller_name}</td>

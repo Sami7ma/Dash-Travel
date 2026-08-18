@@ -2,22 +2,8 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
-
-interface StaffInfo {
-    emp_number: string
-    full_name: string
-    role: string
-}
-
-const ADMIN_NAV = [
-    { href: '/dash-travel/dashboard', label: 'Dashboard', icon: '📊', roles: ['ADMIN', 'SUPER_ADMIN'] },
-    { href: '/dash-travel/schedules', label: 'Schedules', icon: '📅', roles: ['ADMIN', 'SUPER_ADMIN'] },
-    { href: '/dash-travel/routes', label: 'Routes', icon: '🛤️', roles: ['ADMIN', 'SUPER_ADMIN'] },
-    { href: '/dash-travel/buses', label: 'Buses', icon: '🚌', roles: ['SUPER_ADMIN'] },
-    { href: '/dash-travel/bookings', label: 'Bookings', icon: '🎫', roles: ['ADMIN', 'SUPER_ADMIN'] },
-    { href: '/dash-travel/staff', label: 'Staff', icon: '👥', roles: ['SUPER_ADMIN'] },
-    { href: '/dash-travel/audit', label: 'Audit Log', icon: '📋', roles: ['SUPER_ADMIN'] },
-]
+import type { StaffInfo, StaffRole } from '@/lib/types'
+import { ADMIN_NAV } from '@/lib/constants'
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
     const router = useRouter()
@@ -26,19 +12,23 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     const [loading, setLoading] = useState(true)
     const [sidebarOpen, setSidebarOpen] = useState(true)
 
-    // All hooks must be called before any conditional return
     useEffect(() => {
         async function checkAuth() {
-            const res = await fetch('/api/staff/me')
-            if (res.ok) {
-                const data = await res.json()
-                setStaff(data.staff)
-            } else {
+            try {
+                const res = await fetch('/api/staff/me')
+                if (res.ok) {
+                    const data = await res.json()
+                    setStaff(data.staff)
+                } else {
+                    router.push('/dash-travel/login')
+                }
+            } catch {
                 router.push('/dash-travel/login')
             }
             setLoading(false)
         }
         checkAuth()
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [])
 
     const handleLogout = async () => {
@@ -46,7 +36,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         router.push('/dash-travel/login')
     }
 
-    // Login page bypasses the admin shell (safe here — after all hooks)
+    // Login page bypasses the admin shell (safe — after all hooks)
     if (pathname === '/dash-travel/login') return <>{children}</>
 
     if (loading) return (
@@ -55,20 +45,24 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         </div>
     )
 
-    const visibleNav = ADMIN_NAV.filter(n => n.roles.includes(staff?.role || ''))
+    const visibleNav = ADMIN_NAV.filter(n => staff?.role && (n.roles as readonly StaffRole[]).includes(staff.role))
 
     return (
         <div style={{ display: 'flex', minHeight: '100vh', background: '#0a0e1a', color: '#f1f5f9' }}>
             {/* Sidebar */}
-            <aside style={{
-                width: sidebarOpen ? 240 : 60,
-                background: 'rgba(17,24,39,0.95)',
-                borderRight: '1px solid rgba(255,255,255,0.06)',
-                display: 'flex', flexDirection: 'column',
-                transition: 'width 0.2s ease',
-                flexShrink: 0,
-                position: 'sticky', top: 0, height: '100vh',
-            }}>
+            <aside
+                style={{
+                    width: sidebarOpen ? 240 : 60,
+                    background: 'rgba(17,24,39,0.95)',
+                    borderRight: '1px solid rgba(255,255,255,0.06)',
+                    display: 'flex', flexDirection: 'column',
+                    transition: 'width 0.2s ease',
+                    flexShrink: 0,
+                    position: 'sticky', top: 0, height: '100vh',
+                }}
+                role="navigation"
+                aria-label="Admin navigation"
+            >
                 {/* Brand */}
                 <div style={{
                     padding: sidebarOpen ? '1.25rem 1rem' : '1.25rem 0.5rem',
@@ -98,6 +92,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                             <button
                                 key={item.href}
                                 onClick={() => router.push(item.href)}
+                                aria-current={isActive ? 'page' : undefined}
                                 style={{
                                     display: 'flex', alignItems: 'center', gap: 10,
                                     padding: sidebarOpen ? '10px 12px' : '10px 0',
@@ -121,6 +116,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                 <div style={{ padding: '0.75rem', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
                     <button
                         onClick={() => setSidebarOpen(!sidebarOpen)}
+                        aria-label={sidebarOpen ? 'Collapse sidebar' : 'Expand sidebar'}
                         style={{
                             width: '100%', padding: '8px', background: 'rgba(255,255,255,0.05)',
                             border: 'none', borderRadius: 6, color: '#64748b', cursor: 'pointer',

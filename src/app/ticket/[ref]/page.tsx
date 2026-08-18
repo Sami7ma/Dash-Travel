@@ -2,11 +2,15 @@
 
 import { useEffect, useState, useRef } from 'react'
 import { useParams, useRouter } from 'next/navigation'
+import QRCode from 'qrcode'
+import type { Booking, ScheduleSearchResult } from '@/lib/types'
+import { getStatusBadge } from '@/lib/types'
+import { SEAT_HOLD_TIMEOUT_MINUTES } from '@/lib/constants'
 
 export default function TicketPage() {
     const { ref } = useParams()
     const router = useRouter()
-    const [bookings, setBookings] = useState<any[]>([])
+    const [bookings, setBookings] = useState<Booking[]>([])
     const [loading, setLoading] = useState(true)
     const [verifying, setVerifying] = useState(false)
     const [error, setError] = useState<string | null>(null)
@@ -14,7 +18,7 @@ export default function TicketPage() {
     const [timerExpired, setTimerExpired] = useState(false)
     const qrRef = useRef<HTMLCanvasElement>(null)
 
-    async function loadBooking() {
+    const loadBooking = async () => {
         try {
             const res = await fetch(`/api/bookings/ticket?ref=${ref}`)
             if (!res.ok) {
@@ -36,6 +40,7 @@ export default function TicketPage() {
 
     useEffect(() => {
         if (ref) loadBooking()
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [ref])
 
     // 15-minute countdown timer for PENDING bookings
@@ -45,7 +50,7 @@ export default function TicketPage() {
         if (primary.payment_status === 'PAID' || primary.status === 'CANCELLED') return
 
         const bookedAt = new Date(primary.booked_at).getTime()
-        const deadline = bookedAt + 15 * 60 * 1000 // 15 minutes
+        const deadline = bookedAt + SEAT_HOLD_TIMEOUT_MINUTES * 60 * 1000
         let releaseRequested = false
 
         const tick = () => {
@@ -57,7 +62,6 @@ export default function TicketPage() {
                 setTimerExpired(true)
                 if (releaseRequested) return
                 releaseRequested = true
-                // Auto-release only this expired booking group
                 fetch(`/api/cron/release-seats?ref=${ref}`).then(() => {
                     setTimeout(() => loadBooking(), 1500)
                 })
@@ -72,59 +76,43 @@ export default function TicketPage() {
         tick()
         const interval = setInterval(tick, 1000)
         return () => clearInterval(interval)
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [bookings])
 
-    // Generate QR code as simple SVG-based data matrix
+    // Generate real scannable QR code using the qrcode library
     useEffect(() => {
         if (!qrRef.current || bookings.length === 0) return
-        const canvas = qrRef.current
-        const ctx = canvas.getContext('2d')
-        if (!ctx) return
 
-        const data = `DASH_TRAVEL:${ref}:${bookings.map(b => b.seats?.seat_number).join(',')}`
-        const size = 140
-        canvas.width = size
-        canvas.height = size
+        const qrData = JSON.stringify({
+            type: 'DASH_TRAVEL_TICKET',
+            ref: String(ref),
+            seats: bookings.map(b => b.seats?.seat_number).filter(Boolean),
+            passenger: bookings[0]?.seat_traveller_name,
+        })
 
-        // Simple visual QR placeholder — generate a unique pattern from the booking ref
-        ctx.fillStyle = '#ffffff'
-        ctx.fillRect(0, 0, size, size)
-        ctx.fillStyle = '#000000'
-
-        // Position patterns (corners)
-        const drawFinder = (x: number, y: number) => {
-            ctx.fillRect(x, y, 28, 28)
-            ctx.fillStyle = '#ffffff'
-            ctx.fillRect(x + 4, y + 4, 20, 20)
-            ctx.fillStyle = '#000000'
-            ctx.fillRect(x + 8, y + 8, 12, 12)
-        }
-        drawFinder(4, 4)
-        drawFinder(size - 32, 4)
-        drawFinder(4, size - 32)
-
-        // Data modules from booking ref hash
-        const str = String(ref) + bookings[0]?.id
-        for (let i = 0; i < str.length; i++) {
-            const code = str.charCodeAt(i)
-            const x = 36 + (i % 8) * 10
-            const y = 36 + Math.floor(i / 8) * 10
-            if (x < size - 4 && y < size - 4) {
-                ctx.fillStyle = code % 2 === 0 ? '#000000' : '#ffffff'
-                ctx.fillRect(x, y, 8, 8)
-            }
-        }
+        QRCode.toCanvas(qrRef.current, qrData, {
+            width: 140,
+            margin: 1,
+            color: {
+                dark: '#000000',
+                light: '#ffffff',
+            },
+            errorCorrectionLevel: 'M',
+        }).catch(() => {
+            // Silently fail — QR is non-critical
+        })
     }, [bookings, ref])
 
     const handleVerify = async () => {
         setVerifying(true)
-        const res = await fetch(`/api/bookings/verify?ref=${ref}`)
-        const data = await res.json()
-        if (data.status === 'paid' || data.status === 'already_paid') {
-            alert('✅ Payment confirmed!')
-            await loadBooking()
-        } else {
-            alert('⏳ Payment not yet received. Try again in a moment.')
+        try {
+            const res = await fetch(`/api/bookings/verify?ref=${ref}`)
+            const data = await res.json()
+            if (data.status === 'paid' || data.status === 'already_paid') {
+                await loadBooking()
+            }
+        } catch {
+            // Verification failed — user can retry
         }
         setVerifying(false)
     }
@@ -144,38 +132,24 @@ export default function TicketPage() {
         </div>
     )
 
-    // Use first booking for shared info
     const primary = bookings[0]
     const isPaid = bookings.every(b => b.payment_status === 'PAID')
     const isCancelled = bookings.every(b => b.status === 'CANCELLED')
     const schedule = primary.seats?.schedules
     const route = schedule?.routes
-    const isExpired = schedule && new Date(`${schedule.departure_date}T23:59:59`) < new Date()
-    const allSeats = bookings.map(b => b.seats?.seat_number).filter(Boolean)
+    const isExpired = schedule != null && new Date(`${schedule.departure_date}T23:59:59`) < new Date()
+    const allSeats = bookings.map(b => b.seats?.seat_number).filter(Boolean) as string[]
     const totalPrice = bookings.reduce((sum, b) => sum + Number(b.price_etb || 0), 0)
 
-    let badgeClass = 'badge-pending'
-    let statusText = '⏳ Payment Pending'
-    let accentColor = 'var(--gold)'
+    const badge = getStatusBadge(primary.payment_status, primary.status, isExpired)
 
-    if (isCancelled) {
-        badgeClass = 'badge-cancelled'
-        statusText = '❌ Cancelled'
-        accentColor = 'var(--danger)'
-    } else if (isExpired) {
-        badgeClass = 'badge-expired'
-        statusText = '🕒 Expired'
-        accentColor = 'var(--text-muted)'
-    } else if (isPaid) {
-        badgeClass = 'badge-paid'
-        statusText = '✅ Paid'
-        accentColor = 'var(--success)'
-    }
+    const originName = (route as unknown as { origin?: { name: string }; destination?: { name: string } })?.origin?.name
+    const destName = (route as unknown as { origin?: { name: string }; destination?: { name: string } })?.destination?.name
 
     const infoRows = [
         { label: 'Passenger', value: primary.seat_traveller_name },
         { label: 'Phone', value: primary.passengers?.phone_masked || '—' },
-        { label: 'Route', value: route ? `${route.origin?.name} → ${route.destination?.name}` : '—' },
+        { label: 'Route', value: originName && destName ? `${originName} → ${destName}` : '—' },
         { label: 'Date', value: schedule?.departure_date || '—' },
         { label: 'Time', value: `${schedule?.departure_time || '—'} → ${schedule?.arrival_time || 'TBD'}` },
         { label: 'Seat(s)', value: allSeats.join(', ') || '—' },
@@ -201,15 +175,15 @@ export default function TicketPage() {
                     padding: '2rem',
                     textAlign: 'center',
                     opacity: isCancelled || isExpired ? 0.75 : 1,
-                    borderColor: accentColor,
+                    borderColor: badge.accentColor,
                 }}>
                     {/* Header */}
                     <p style={{ fontFamily: 'Outfit', fontWeight: 600, fontSize: '0.85rem', color: 'var(--gold)', letterSpacing: '2px', textTransform: 'uppercase', marginBottom: '0.75rem' }}>
                         DASH TRAVEL
                     </p>
 
-                    <div className={`badge ${badgeClass}`} style={{ marginBottom: '1rem' }}>
-                        {statusText}
+                    <div className={`badge ${badge.className}`} style={{ marginBottom: '1rem' }}>
+                        {badge.text}
                     </div>
 
                     {!isPaid && !isCancelled && !isExpired && (
@@ -224,7 +198,7 @@ export default function TicketPage() {
                                 Payment hold expires in
                             </p>
                             <p style={{ color: 'var(--gold)', fontFamily: 'Outfit', fontWeight: 800, fontSize: '1.45rem', lineHeight: 1 }}>
-                                {countdown || '15:00'}
+                                {countdown || `${SEAT_HOLD_TIMEOUT_MINUTES}:00`}
                             </p>
                             {timerExpired && (
                                 <p style={{ color: 'var(--danger)', fontSize: '0.78rem', marginTop: 6 }}>
@@ -253,7 +227,7 @@ export default function TicketPage() {
                         {isCancelled || isExpired ? 'Receipt' : 'Ticket'}
                     </p>
 
-                    {/* QR Code */}
+                    {/* QR Code — now a real scannable QR */}
                     {isPaid && !isCancelled && !isExpired && (
                         <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '1.5rem' }}>
                             <div style={{

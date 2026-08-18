@@ -1,8 +1,12 @@
 import { supabaseAdmin } from '@/lib/supabaseAdmin'
+import { SEAT_HOLD_TIMEOUT_MINUTES, log } from '@/lib/constants'
 
-export const SEAT_HOLD_TIMEOUT_MINUTES = 15
+// Re-export for consumers that import from here
+export { SEAT_HOLD_TIMEOUT_MINUTES } from '@/lib/constants'
 
-type StaleBooking = {
+// ─── Types ────────────────────────────────────────────────────────────────
+
+interface StaleBooking {
     id: string
     seat_id: string | null
     booking_ref: string
@@ -10,13 +14,13 @@ type StaleBooking = {
     price_etb: number | string | null
 }
 
-type ChapaVerification = {
+interface ChapaVerification {
     paid: boolean
     shouldSkipRelease: boolean
     error?: string
 }
 
-export type SeatHoldCleanupResult = {
+export interface SeatHoldCleanupResult {
     checkedGroups: number
     markedPaid: number
     releasedSeats: number
@@ -25,16 +29,20 @@ export type SeatHoldCleanupResult = {
     errors: string[]
 }
 
-const emptyResult = (): SeatHoldCleanupResult => ({
-    checkedGroups: 0,
-    markedPaid: 0,
-    releasedSeats: 0,
-    deletedBookings: 0,
-    skippedGroups: 0,
-    errors: [],
-})
+// ─── Helpers ──────────────────────────────────────────────────────────────
 
-function getTxRef(booking: StaleBooking) {
+function emptyResult(): SeatHoldCleanupResult {
+    return {
+        checkedGroups: 0,
+        markedPaid: 0,
+        releasedSeats: 0,
+        deletedBookings: 0,
+        skippedGroups: 0,
+        errors: [],
+    }
+}
+
+function getTxRef(booking: StaleBooking): string {
     return booking.group_ref || booking.booking_ref
 }
 
@@ -55,7 +63,9 @@ async function verifyChapaPayment(txRef: string, expectedAmount: number): Promis
             return {
                 paid: false,
                 shouldSkipRelease: isServerOrNetworkIssue,
-                error: isServerOrNetworkIssue ? `Chapa verify failed for ${txRef}: HTTP ${verifyRes.status}` : undefined,
+                error: isServerOrNetworkIssue
+                    ? `Chapa verify failed for ${txRef}: HTTP ${verifyRes.status}`
+                    : undefined,
             }
         }
 
@@ -83,6 +93,8 @@ async function verifyChapaPayment(txRef: string, expectedAmount: number): Promis
     }
 }
 
+// ─── Main Cleanup Logic ──────────────────────────────────────────────────
+
 export async function releaseExpiredSeatHolds(ref?: string): Promise<SeatHoldCleanupResult> {
     const result = emptyResult()
     const cutoff = new Date(Date.now() - SEAT_HOLD_TIMEOUT_MINUTES * 60 * 1000).toISOString()
@@ -100,10 +112,7 @@ export async function releaseExpiredSeatHolds(ref?: string): Promise<SeatHoldCle
     const { data: staleBookings, error } = await query
 
     if (error) {
-        return {
-            ...result,
-            errors: [error.message],
-        }
+        return { ...result, errors: [error.message] }
     }
 
     if (!staleBookings || staleBookings.length === 0) {
@@ -124,6 +133,11 @@ export async function releaseExpiredSeatHolds(ref?: string): Promise<SeatHoldCle
 
         if (verification.error) {
             result.errors.push(verification.error)
+            log({
+                level: 'error',
+                module: 'SEAT_HOLDS',
+                message: verification.error,
+            })
         }
 
         const bookingIds = bookings.map(booking => booking.id)

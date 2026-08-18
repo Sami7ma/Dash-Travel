@@ -2,14 +2,16 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import type { City } from '@/lib/types'
 
 export default function Home() {
   const router = useRouter()
-  const [cities, setCities] = useState<{ id: string, name: string }[]>([])
+  const [cities, setCities] = useState<City[]>([])
   const [from, setFrom] = useState('')
   const [to, setTo] = useState('')
   const [date, setDate] = useState('')
   const [ready, setReady] = useState(false)
+  const [formError, setFormError] = useState('')
 
   useEffect(() => {
     async function fetchCities() {
@@ -17,8 +19,8 @@ export default function Home() {
         const res = await fetch('/api/cities')
         const data = await res.json()
         if (Array.isArray(data)) setCities(data)
-      } catch (err) {
-        console.error('Failed to load cities:', err)
+      } catch {
+        // Cities will show empty — non-fatal
       }
     }
     fetchCities()
@@ -27,12 +29,19 @@ export default function Home() {
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault()
-    if (!from || !to || !date) return alert("Please fill all fields")
-    if (from === to) return alert("Origin and destination cannot be the same")
+    setFormError('')
+
+    if (!from || !to || !date) {
+      setFormError('Please fill all fields')
+      return
+    }
+    if (from === to) {
+      setFormError('Origin and destination cannot be the same')
+      return
+    }
     router.push(`/book?from=${from}&to=${to}&date=${date}&type=ONE_WAY`)
   }
 
-  // Set minimum date to today
   const today = new Date().toISOString().split('T')[0]
 
   return (
@@ -82,12 +91,29 @@ export default function Home() {
           flexDirection: 'column',
           gap: '1rem',
         }}>
+          {/* Inline form error replaces alert() */}
+          {formError && (
+            <div role="alert" style={{
+              background: 'rgba(239,68,68,0.1)',
+              border: '1px solid rgba(239,68,68,0.3)',
+              borderRadius: 'var(--radius-sm)',
+              padding: '10px 14px',
+              color: 'var(--danger)',
+              fontSize: '0.85rem',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+            }}>
+              <span>⚠️</span> {formError}
+            </div>
+          )}
+
           <div style={{ display: 'flex', gap: '0.75rem' }}>
             <div style={{ flex: 1 }}>
-              <label style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '6px', display: 'block', fontWeight: 500 }}>
+              <label htmlFor="from-city" style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '6px', display: 'block', fontWeight: 500 }}>
                 📍 From
               </label>
-              <select className="select" value={from} onChange={(e) => setFrom(e.target.value)} required>
+              <select id="from-city" className="select" value={from} onChange={(e) => setFrom(e.target.value)} required aria-label="Departure city">
                 <option value="">Select city</option>
                 {cities.map(city => (
                   <option key={city.id} value={city.name}>{city.name}</option>
@@ -95,10 +121,10 @@ export default function Home() {
               </select>
             </div>
             <div style={{ flex: 1 }}>
-              <label style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '6px', display: 'block', fontWeight: 500 }}>
+              <label htmlFor="to-city" style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '6px', display: 'block', fontWeight: 500 }}>
                 📍 To
               </label>
-              <select className="select" value={to} onChange={(e) => setTo(e.target.value)} required>
+              <select id="to-city" className="select" value={to} onChange={(e) => setTo(e.target.value)} required aria-label="Destination city">
                 <option value="">Select city</option>
                 {cities.map(city => (
                   <option key={city.id} value={city.name}>{city.name}</option>
@@ -108,16 +134,18 @@ export default function Home() {
           </div>
 
           <div>
-            <label style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '6px', display: 'block', fontWeight: 500 }}>
+            <label htmlFor="travel-date" style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '6px', display: 'block', fontWeight: 500 }}>
               📅 Travel Date
             </label>
             <input
+              id="travel-date"
               className="input"
               type="date"
               value={date}
               min={today}
               onChange={(e) => setDate(e.target.value)}
               required
+              aria-label="Travel date"
             />
           </div>
 

@@ -2,13 +2,15 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
+import { Suspense } from 'react'
 import { supabase } from '@/lib/supabase'
+import type { Seat, ScheduleSearchResult, SeatMap, ParsedSeat } from '@/lib/types'
+import { MAX_SEATS_PER_BOOKING, SEAT_LABEL_REGEX, LEFT_SEAT_COLUMNS, PHONE_REGEX } from '@/lib/constants'
 
 type Step = 'results' | 'seats' | 'confirm'
 
-// Parse seat label like "1A","1B","1C","1D" -> row 1, col A/B/C/D
-function parseSeat(seatNumber: string) {
-    const match = seatNumber.match(/^(\d+)([A-Z]+)$/)
+function parseSeat(seatNumber: string): ParsedSeat {
+    const match = seatNumber.match(SEAT_LABEL_REGEX)
     if (!match) return { row: 0, col: seatNumber }
     return { row: parseInt(match[1]), col: match[2] }
 }
@@ -25,37 +27,43 @@ function BookingFlow() {
     const [direction, setDirection] = useState<'forward' | 'back'>('forward')
     const [animKey, setAnimKey] = useState(0)
 
-    const [schedules, setSchedules] = useState<any[]>([])
+    const [schedules, setSchedules] = useState<ScheduleSearchResult[]>([])
     const [loadingResults, setLoadingResults] = useState(true)
 
-    const [selectedSchedule, setSelectedSchedule] = useState<any>(null)
-    const [seats, setSeats] = useState<any[]>([])
+    const [selectedSchedule, setSelectedSchedule] = useState<ScheduleSearchResult | null>(null)
+    const [seats, setSeats] = useState<Seat[]>([])
     const [selectedSeats, setSelectedSeats] = useState<string[]>([])
     const [loadingSeats, setLoadingSeats] = useState(false)
 
     const [name, setName] = useState('')
     const [phone, setPhone] = useState('')
     const [paying, setPaying] = useState(false)
+    const [formError, setFormError] = useState('')
 
     const goToStep = useCallback((newStep: Step, dir: 'forward' | 'back' = 'forward') => {
         setDirection(dir)
         setAnimKey(k => k + 1)
         setStep(newStep)
+        setFormError('')
         window.scrollTo({ top: 0, behavior: 'smooth' })
     }, [])
 
     useEffect(() => {
         async function fetchSchedules() {
             if (!from || !to || !date) return
-            const res = await fetch(`/api/routes/search?from=${from}&to=${to}&date=${date}&type=ONE_WAY`)
-            const data = await res.json()
-            setSchedules(data)
+            try {
+                const res = await fetch(`/api/routes/search?from=${from}&to=${to}&date=${date}&type=ONE_WAY`)
+                const data = await res.json()
+                setSchedules(data)
+            } catch {
+                setSchedules([])
+            }
             setLoadingResults(false)
         }
         fetchSchedules()
     }, [from, to, date])
 
-    const handleSelectSchedule = async (schedule: any) => {
+    const handleSelectSchedule = async (schedule: ScheduleSearchResult) => {
         setSelectedSchedule(schedule)
         setLoadingSeats(true)
         setSelectedSeats([])
@@ -67,7 +75,7 @@ function BookingFlow() {
             .eq('schedule_id', schedule.id)
             .order('seat_number')
 
-        setSeats(seatData || [])
+        setSeats((seatData as Seat[]) || [])
         setLoadingSeats(false)
 
         const channel = supabase
@@ -75,36 +83,52 @@ function BookingFlow() {
             .on('postgres_changes',
                 { event: 'UPDATE', schema: 'public', table: 'seats', filter: `schedule_id=eq.${schedule.id}` },
                 (payload) => {
-                    setSeats(curr => curr.map(s => s.id === payload.new.id ? { ...s, is_booked: payload.new.is_booked } : s))
+                    setSeats(curr => curr.map(s =>
+                        s.id === payload.new.id ? { ...s, is_booked: (payload.new as Seat).is_booked } : s
+                    ))
                 })
             .subscribe()
         return () => { supabase.removeChannel(channel) }
     }
 
     const toggleSeat = (seatNum: string) => {
-        setSelectedSeats(prev =>
-            prev.includes(seatNum)
-                ? prev.filter(s => s !== seatNum)
-                : prev.length >= 10 ? (alert('Maximum 10 seats per booking'), prev) : [...prev, seatNum]
-        )
+        setSelectedSeats(prev => {
+            if (prev.includes(seatNum)) {
+                return prev.filter(s => s !== seatNum)
+            }
+            if (prev.length >= MAX_SEATS_PER_BOOKING) {
+                setFormError(`Maximum ${MAX_SEATS_PER_BOOKING} seats per booking`)
+                return prev
+            }
+            setFormError('')
+            return [...prev, seatNum]
+        })
     }
 
     const handlePay = async (e: React.FormEvent) => {
         e.preventDefault()
-        if (!/^09\d{8}$/.test(phone)) {
-            return alert('Phone must be: 09XXXXXXXX (10 digits)')
+        setFormError('')
+
+        if (!PHONE_REGEX.test(phone)) {
+            setFormError('Phone must be: 09XXXXXXXX (10 digits)')
+            return
         }
         setPaying(true)
-        const res = await fetch('/api/bookings', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ scheduleId: selectedSchedule.id, seatNumbers: selectedSeats, name, phone }),
-        })
-        const data = await res.json()
-        if (data.checkoutUrl) {
-            window.location.href = data.checkoutUrl
-        } else {
-            alert('Error: ' + data.error)
+        try {
+            const res = await fetch('/api/bookings', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ scheduleId: selectedSchedule?.id, seatNumbers: selectedSeats, name, phone }),
+            })
+            const data = await res.json()
+            if (data.checkoutUrl) {
+                window.location.href = data.checkoutUrl
+            } else {
+                setFormError(data.error || 'Failed to initialize payment')
+                setPaying(false)
+            }
+        } catch {
+            setFormError('Connection error. Please try again.')
             setPaying(false)
         }
     }
@@ -118,12 +142,12 @@ function BookingFlow() {
     const pricePerSeat = selectedSchedule?.routes?.base_price_etb ?? 0
     const totalPrice = pricePerSeat * selectedSeats.length
 
-    // Build rows: group seats by row number, left (A,B) and right (C,D)
-    const seatMap: Record<number, { left: any[], right: any[] }> = {}
+    // Build seat grid: group seats by row, split into left (A,B) and right (C,D)
+    const seatMap: SeatMap = {}
     seats.forEach(seat => {
         const { row, col } = parseSeat(seat.seat_number)
         if (!seatMap[row]) seatMap[row] = { left: [], right: [] }
-        if (col === 'A' || col === 'B') {
+        if (LEFT_SEAT_COLUMNS.includes(col)) {
             seatMap[row].left.push(seat)
         } else {
             seatMap[row].right.push(seat)
@@ -132,7 +156,7 @@ function BookingFlow() {
     const sortedRows = Object.keys(seatMap).map(Number).sort((a, b) => a - b)
     const availableCount = seats.filter(s => !s.is_booked).length
 
-    const bgImage = step === 'results' ? '/bus-side.jpg' : step === 'seats' ? '/bus-aerial.jpg' : '/bus-aerial.jpg'
+    const bgImage = step === 'results' ? '/bus-side.jpg' : '/bus-aerial.jpg'
 
     return (
         <div style={{ minHeight: '100vh', position: 'relative', background: 'var(--navy)' }}>
@@ -149,7 +173,7 @@ function BookingFlow() {
                         if (step === 'confirm') goToStep('seats', 'back')
                         else if (step === 'seats') goToStep('results', 'back')
                         else router.push('/')
-                    }}>← Back</button>
+                    }} aria-label="Go back">← Back</button>
                     <div style={{ textAlign: 'right' }}>
                         <p style={{ fontFamily: 'Outfit', fontWeight: 600, fontSize: '0.9rem', color: 'var(--text)' }}>
                             {from} → {to}
@@ -162,10 +186,10 @@ function BookingFlow() {
             {/* Progress */}
             <div style={{ position: 'relative', zIndex: 10 }}>
                 <div className="container-wide">
-                    <div className="progress-bar">
+                    <div className="progress-bar" role="navigation" aria-label="Booking progress">
                         {stepList.map((s, i) => (
                             <div key={s.key} style={{ display: 'contents' }}>
-                                <div className={`progress-step ${i < currentIdx ? 'done' : i === currentIdx ? 'active' : ''}`}>
+                                <div className={`progress-step ${i < currentIdx ? 'done' : i === currentIdx ? 'active' : ''}`} aria-current={i === currentIdx ? 'step' : undefined}>
                                     <div className="step-num">{i < currentIdx ? '✓' : s.num}</div>
                                     <span>{s.label}</span>
                                 </div>
@@ -175,6 +199,26 @@ function BookingFlow() {
                     </div>
                 </div>
             </div>
+
+            {/* Form Error Banner */}
+            {formError && (
+                <div className="container-wide" style={{ position: 'relative', zIndex: 10, paddingTop: '0.75rem' }}>
+                    <div role="alert" style={{
+                        background: 'rgba(239,68,68,0.1)',
+                        border: '1px solid rgba(239,68,68,0.3)',
+                        borderRadius: 'var(--radius-sm)',
+                        padding: '10px 14px',
+                        color: 'var(--danger)',
+                        fontSize: '0.85rem',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                    }}>
+                        <span>⚠️ {formError}</span>
+                        <button onClick={() => setFormError('')} style={{ background: 'none', border: 'none', color: 'var(--danger)', cursor: 'pointer', fontSize: '1rem' }} aria-label="Dismiss error">✕</button>
+                    </div>
+                </div>
+            )}
 
             {/* Step Content */}
             <div className="container-wide" style={{ position: 'relative', zIndex: 10, paddingBottom: '4rem' }}>
@@ -206,6 +250,10 @@ function BookingFlow() {
                                             key={schedule.id}
                                             className="glass glass-hover"
                                             onClick={() => handleSelectSchedule(schedule)}
+                                            role="button"
+                                            tabIndex={0}
+                                            onKeyDown={(e) => e.key === 'Enter' && handleSelectSchedule(schedule)}
+                                            aria-label={`Select bus departing at ${schedule.departure_time}, ${schedule.routes?.base_price_etb} ETB`}
                                             style={{
                                                 padding: '1.25rem 1.5rem',
                                                 cursor: 'pointer',
@@ -218,7 +266,6 @@ function BookingFlow() {
                                             }}
                                         >
                                             <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                                                {/* Bus icon */}
                                                 <div style={{
                                                     width: 48, height: 48, borderRadius: 10,
                                                     background: 'linear-gradient(135deg, #16a34a, #065f46)',
@@ -253,7 +300,6 @@ function BookingFlow() {
                     {/* ═══ STEP 2: PICK SEAT ═══ */}
                     {step === 'seats' && (
                         <div>
-                            {/* Header row */}
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem' }}>
                                 <div>
                                     <h2 style={{ fontSize: '1.4rem' }}>Choose Your Seats</h2>
@@ -287,7 +333,6 @@ function BookingFlow() {
                                 <>
                                     {/* BUS DIAGRAM */}
                                     <div style={{
-                                        // Outer bus body - green exterior
                                         background: 'linear-gradient(180deg, #16a34a 0%, #15803d 50%, #166534 100%)',
                                         borderRadius: '32px 32px 20px 20px',
                                         padding: '6px',
@@ -295,7 +340,6 @@ function BookingFlow() {
                                         maxWidth: 460,
                                         margin: '0 auto',
                                     }}>
-                                        {/* Inner bus body */}
                                         <div style={{
                                             background: '#1a1a1a',
                                             borderRadius: '28px 28px 16px 16px',
@@ -311,7 +355,7 @@ function BookingFlow() {
                                                 borderBottom: '2px solid #333',
                                             }}>
                                                 <div style={{ fontSize: '0.65rem', color: '#666', textTransform: 'uppercase', letterSpacing: 2, fontWeight: 600 }}>
-                                                    Driver's Cabin
+                                                    Driver&apos;s Cabin
                                                 </div>
                                                 <div style={{
                                                     background: '#222', border: '1px solid #444', borderRadius: 6,
@@ -324,86 +368,55 @@ function BookingFlow() {
 
                                             {/* Seating area */}
                                             <div style={{
-                                                // Wood floor
                                                 background: 'linear-gradient(180deg, #3d2b1f 0%, #5c3d28 40%, #3d2b1f 100%)',
                                                 padding: '16px 12px',
                                                 position: 'relative',
                                             }}>
-                                                {/* Aisle label */}
                                                 <div style={{
-                                                    position: 'absolute',
-                                                    left: '50%',
-                                                    top: '50%',
+                                                    position: 'absolute', left: '50%', top: '50%',
                                                     transform: 'translate(-50%, -50%)',
-                                                    fontSize: '0.6rem',
-                                                    color: 'rgba(255,255,255,0.2)',
-                                                    letterSpacing: 3,
-                                                    writingMode: 'vertical-lr',
-                                                    textTransform: 'uppercase',
-                                                    fontWeight: 600,
-                                                    pointerEvents: 'none',
-                                                    userSelect: 'none',
+                                                    fontSize: '0.6rem', color: 'rgba(255,255,255,0.2)',
+                                                    letterSpacing: 3, writingMode: 'vertical-lr',
+                                                    textTransform: 'uppercase', fontWeight: 600,
+                                                    pointerEvents: 'none', userSelect: 'none',
                                                 }}>AISLE</div>
 
-                                                {/* Seat rows */}
                                                 <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                                                     {sortedRows.map((rowNum, rowIdx) => {
                                                         const row = seatMap[rowNum]
+                                                        const renderSeat = (seat: Seat) => {
+                                                            const isSelected = selectedSeats.includes(seat.seat_number)
+                                                            const isBooked = seat.is_booked
+                                                            return (
+                                                                <button
+                                                                    key={seat.id}
+                                                                    disabled={isBooked}
+                                                                    onClick={() => toggleSeat(seat.seat_number)}
+                                                                    title={seat.seat_number}
+                                                                    aria-label={`Seat ${seat.seat_number}${isBooked ? ', booked' : isSelected ? ', selected' : ', available'}`}
+                                                                    aria-pressed={isSelected}
+                                                                    className={`seat-img-btn ${isSelected ? 'seat-img-selected' : ''} ${isBooked ? 'seat-img-booked' : ''}`}
+                                                                >
+                                                                    <img
+                                                                        src={isBooked ? '/seat-grey.png' : isSelected ? '/seat-gold.png' : '/seat-blue.png'}
+                                                                        alt={seat.seat_number}
+                                                                    />
+                                                                    <span className="seat-label">{seat.seat_number}</span>
+                                                                </button>
+                                                            )
+                                                        }
                                                         return (
                                                             <div key={rowNum} style={{
-                                                                display: 'flex',
-                                                                justifyContent: 'center',
-                                                                alignItems: 'center',
-                                                                gap: 6,
+                                                                display: 'flex', justifyContent: 'center',
+                                                                alignItems: 'center', gap: 6,
                                                                 animation: `fadeInUp 0.3s ${rowIdx * 0.03}s both`
                                                             }}>
-                                                                {/* Left seats (A, B) */}
                                                                 <div style={{ display: 'flex', gap: 4 }}>
-                                                                    {row.left.sort((a, b) => parseSeat(a.seat_number).col.localeCompare(parseSeat(b.seat_number).col)).map((seat: any) => {
-                                                                        const isSelected = selectedSeats.includes(seat.seat_number)
-                                                                        const isBooked = seat.is_booked
-                                                                        return (
-                                                                            <button
-                                                                                key={seat.id}
-                                                                                disabled={isBooked}
-                                                                                onClick={() => toggleSeat(seat.seat_number)}
-                                                                                title={seat.seat_number}
-                                                                                className={`seat-img-btn ${isSelected ? 'seat-img-selected' : ''} ${isBooked ? 'seat-img-booked' : ''}`}
-                                                                            >
-                                                                                <img
-                                                                                    src={isBooked ? '/seat-grey.png' : isSelected ? '/seat-gold.png' : '/seat-blue.png'}
-                                                                                    alt={seat.seat_number}
-                                                                                />
-                                                                                <span className="seat-label">{seat.seat_number}</span>
-                                                                            </button>
-                                                                        )
-                                                                    })}
+                                                                    {row.left.sort((a, b) => parseSeat(a.seat_number).col.localeCompare(parseSeat(b.seat_number).col)).map(renderSeat)}
                                                                 </div>
-
-                                                                {/* Aisle gap */}
                                                                 <div style={{ width: 32, flexShrink: 0 }} />
-
-                                                                {/* Right seats (C, D) */}
                                                                 <div style={{ display: 'flex', gap: 4 }}>
-                                                                    {row.right.sort((a, b) => parseSeat(a.seat_number).col.localeCompare(parseSeat(b.seat_number).col)).map((seat: any) => {
-                                                                        const isSelected = selectedSeats.includes(seat.seat_number)
-                                                                        const isBooked = seat.is_booked
-                                                                        return (
-                                                                            <button
-                                                                                key={seat.id}
-                                                                                disabled={isBooked}
-                                                                                onClick={() => toggleSeat(seat.seat_number)}
-                                                                                title={seat.seat_number}
-                                                                                className={`seat-img-btn ${isSelected ? 'seat-img-selected' : ''} ${isBooked ? 'seat-img-booked' : ''}`}
-                                                                            >
-                                                                                <img
-                                                                                    src={isBooked ? '/seat-grey.png' : isSelected ? '/seat-gold.png' : '/seat-blue.png'}
-                                                                                    alt={seat.seat_number}
-                                                                                />
-                                                                                <span className="seat-label">{seat.seat_number}</span>
-                                                                            </button>
-                                                                        )
-                                                                    })}
+                                                                    {row.right.sort((a, b) => parseSeat(a.seat_number).col.localeCompare(parseSeat(b.seat_number).col)).map(renderSeat)}
                                                                 </div>
                                                             </div>
                                                         )
@@ -413,12 +426,9 @@ function BookingFlow() {
 
                                             {/* Rear */}
                                             <div style={{
-                                                background: '#111',
-                                                padding: '10px 20px',
-                                                display: 'flex',
-                                                justifyContent: 'space-between',
-                                                alignItems: 'center',
-                                                borderTop: '2px solid #333',
+                                                background: '#111', padding: '10px 20px',
+                                                display: 'flex', justifyContent: 'space-between',
+                                                alignItems: 'center', borderTop: '2px solid #333',
                                             }}>
                                                 <div style={{ fontSize: '0.6rem', color: '#444', textTransform: 'uppercase', letterSpacing: 1 }}>Rear</div>
                                                 <div style={{ fontSize: '0.6rem', color: '#dc2626', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1 }}>
@@ -446,7 +456,7 @@ function BookingFlow() {
                                                     </span>
                                                 </span>
                                             ) : (
-                                                <span style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>Tap seats to select (up to 10)</span>
+                                                <span style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>Tap seats to select (up to {MAX_SEATS_PER_BOOKING})</span>
                                             )}
                                         </div>
                                         <button
@@ -488,17 +498,17 @@ function BookingFlow() {
 
                             <form onSubmit={handlePay} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                                 <div>
-                                    <label style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: 6, display: 'block', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1 }}>
+                                    <label htmlFor="passenger-name" style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: 6, display: 'block', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1 }}>
                                         Full Name
                                     </label>
-                                    <input className="input" placeholder="e.g. Abebe Kebede" value={name} onChange={e => setName(e.target.value)} required />
+                                    <input id="passenger-name" className="input" placeholder="e.g. Abebe Kebede" value={name} onChange={e => setName(e.target.value)} required aria-label="Passenger full name" />
                                 </div>
 
                                 <div>
-                                    <label style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: 6, display: 'block', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1 }}>
+                                    <label htmlFor="passenger-phone" style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: 6, display: 'block', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1 }}>
                                         Phone Number
                                     </label>
-                                    <input className="input" placeholder="09XXXXXXXX" value={phone} onChange={e => setPhone(e.target.value)} required />
+                                    <input id="passenger-phone" className="input" placeholder="09XXXXXXXX" value={phone} onChange={e => setPhone(e.target.value)} required aria-label="Passenger phone number" />
                                 </div>
 
                                 <div style={{
@@ -529,8 +539,6 @@ function BookingFlow() {
     )
 }
 
-import { Suspense } from 'react'
-
 export default function BookingPage() {
     return (
         <Suspense fallback={
@@ -542,4 +550,3 @@ export default function BookingPage() {
         </Suspense>
     )
 }
-

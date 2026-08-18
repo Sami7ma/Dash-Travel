@@ -2,6 +2,13 @@ import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabaseAdmin'
 import { releaseExpiredSeatHolds, SEAT_HOLD_TIMEOUT_MINUTES } from '@/lib/seatHolds'
 import { randomBytes } from 'crypto'
+import {
+    MAX_SEATS_PER_BOOKING,
+    MIN_NAME_LENGTH,
+    MAX_NAME_LENGTH,
+    PHONE_REGEX,
+    log,
+} from '@/lib/constants'
 
 // Cryptographically strong booking ref — 10 hex chars = ~1 trillion combos
 function generateRef(): string {
@@ -20,16 +27,16 @@ export async function POST(req: NextRequest) {
     if (!scheduleId || seats.length === 0 || !name?.trim() || !phone?.trim()) {
         return NextResponse.json({ error: 'All fields are required' }, { status: 400 })
     }
-    if (seats.length > 10) {
-        return NextResponse.json({ error: 'Maximum 10 seats per booking' }, { status: 400 })
+    if (seats.length > MAX_SEATS_PER_BOOKING) {
+        return NextResponse.json({ error: `Maximum ${MAX_SEATS_PER_BOOKING} seats per booking` }, { status: 400 })
     }
-    if (!/^09\d{8}$/.test(phone)) {
+    if (!PHONE_REGEX.test(phone)) {
         return NextResponse.json({ error: 'Phone must be Ethiopian format: 09XXXXXXXX (10 digits)' }, { status: 400 })
     }
     // Sanitize name
-    const cleanName = name.trim().replace(/[\x00-\x1F\x7F]/g, '').substring(0, 100)
-    if (cleanName.length < 2) {
-        return NextResponse.json({ error: 'Name must be at least 2 characters' }, { status: 400 })
+    const cleanName = name.trim().replace(/[\x00-\x1F\x7F]/g, '').substring(0, MAX_NAME_LENGTH)
+    if (cleanName.length < MIN_NAME_LENGTH) {
+        return NextResponse.json({ error: `Name must be at least ${MIN_NAME_LENGTH} characters` }, { status: 400 })
     }
 
     await releaseExpiredSeatHolds()
@@ -54,11 +61,12 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: 'Cannot book a seat for a past departure' }, { status: 400 })
     }
 
-    const pricePerSeat = (schedule.routes as any)?.base_price_etb ?? 0
+    const routeData = Array.isArray(schedule.routes) ? schedule.routes[0] : schedule.routes
+    const pricePerSeat = (routeData as { base_price_etb?: number } | null)?.base_price_etb ?? 0
     const totalPrice = pricePerSeat * seats.length
 
     // ── Find or create passenger ──────────────────────────────────────
-    let passenger
+    let passenger: { id: string }
     const { data: existing } = await supabaseAdmin
         .from('passengers')
         .select('id')
@@ -73,7 +81,7 @@ export async function POST(req: NextRequest) {
             .insert({ full_name: cleanName, phone })
             .select('id')
             .single()
-        if (pErr) return NextResponse.json({ error: 'Could not create passenger' }, { status: 500 })
+        if (pErr || !newP) return NextResponse.json({ error: 'Could not create passenger' }, { status: 500 })
         passenger = newP
     }
 
@@ -114,7 +122,6 @@ export async function POST(req: NextRequest) {
     }
 
     // ── Create booking records ────────────────────────────────────────
-    // One booking ref for the whole group, one row per seat
     const groupRef = generateRef()
     const bookingInserts = lockedSeatIds.map((seatId, i) => ({
         booking_ref: seats.length === 1 ? groupRef : `${groupRef}-${i + 1}`,
@@ -134,10 +141,15 @@ export async function POST(req: NextRequest) {
         .select('id')
 
     if (bookErr) {
-        // Rollback seat locks
         for (const seatId of lockedSeatIds) {
             await supabaseAdmin.from('seats').update({ is_booked: false }).eq('id', seatId)
         }
+        log({
+            level: 'error',
+            module: 'BOOKINGS',
+            message: 'Failed to create booking records',
+            data: { error: bookErr.message, groupRef },
+        })
         return NextResponse.json({ error: 'Could not create booking' }, { status: 500 })
     }
 
@@ -146,14 +158,13 @@ export async function POST(req: NextRequest) {
         for (const seatId of lockedSeatIds) {
             await supabaseAdmin.from('seats').update({ is_booked: false }).eq('id', seatId)
         }
-
         const createdIds = (createdBookings || []).map(booking => booking.id)
         if (createdIds.length > 0) {
             await supabaseAdmin.from('bookings').delete().in('id', createdIds)
         }
     }
 
-    let chapaData
+    let chapaData: { status: string; data?: { checkout_url: string } }
     try {
         const chapaRes = await fetch('https://api.chapa.co/v1/transaction/initialize', {
             method: 'POST',
@@ -185,11 +196,17 @@ export async function POST(req: NextRequest) {
 
     if (chapaData.status !== 'success') {
         await rollbackUnpaidHold()
-        return NextResponse.json({ error: 'Chapa: ' + JSON.stringify(chapaData) }, { status: 500 })
+        log({
+            level: 'error',
+            module: 'CHAPA',
+            message: 'Payment initialization failed',
+            data: { chapaResponse: chapaData, groupRef },
+        })
+        return NextResponse.json({ error: 'Payment initialization failed. Please try again.' }, { status: 500 })
     }
 
     return NextResponse.json({
-        checkoutUrl: chapaData.data.checkout_url,
+        checkoutUrl: chapaData.data?.checkout_url,
         groupRef,
         seatCount: seats.length,
         totalPrice,
